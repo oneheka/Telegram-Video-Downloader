@@ -1,7 +1,7 @@
 {
   "welcome": "👋 **Hello!**\n\nI am a media downloader bot.\nSend me links from **Instagram**, **TikTok**, **YouTube Shorts**, **Twitter/X**, **VK Clips**, **Reddit**, or **Pinterest**, and I'll download and send the video directly to you!",
   "settings_menu": "⚙️ **Settings:**",
-  "lang_select": "🌐 **Select Language / Выберите язык / 언어 선택:**",
+  "lang_select": "🌐 **Select Language:**",
   "lang_changed": "✅ Language changed to **English** 🇬🇧",
   "active_lang": "Language: **English** 🇬🇧",
   "btn_language": "🌐 Language: English 🇬🇧",

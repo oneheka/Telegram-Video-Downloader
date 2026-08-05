@@ -1,7 +1,7 @@
 {
   "welcome": "👋 **Привет!**\n\nЯ бот для скачивания видео.\nОтправляй мне ссылки из **Instagram**, **TikTok**, **YouTube Shorts**, **Twitter/X**, **VK Клипов**, **Reddit** или **Pinterest**, и я быстро скачаю и пришлю видео!",
   "settings_menu": "⚙️ **Настройки бота:**",
-  "lang_select": "🌐 **Выберите язык / Select Language / 언어 선택:**",
+  "lang_select": "🌐 **Выберите язык:**",
   "lang_changed": "✅ Язык изменен на **Русский** 🇷🇺",
   "active_lang": "Язык: **Русский** 🇷🇺",
   "btn_language": "🌐 Язык: Русский 🇷🇺",
