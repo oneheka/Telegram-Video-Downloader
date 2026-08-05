@@ -6,14 +6,17 @@
         "allowImportingTsExtensions": true,
         "noEmit": true,
         "strict": true,
-        "downlevelIteration": true,
         "skipLibCheck": true,
         "jsx": "preserve",
         "allowSyntheticDefaultImports": true,
         "forceConsistentCasingInFileNames": true,
-        "baseUrl": ".",
         "paths": {
-            "@/*": ["src/*"]
-        }
+            "@/*": [
+                "./src/*"
+            ]
+        },
+        "types": [
+            "node"
+        ]
     }
 }

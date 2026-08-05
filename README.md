@@ -36,7 +36,7 @@ Auto-detection and manual language switching for 9 languages:
 - 🇬🇧 **English** (`en`)
 - 🇷🇺 **Русский** (`ru`)
 - 🇰🇷 **한국어** (`ko`)
-- 🇸🇦 **العربية** (`ar`)
+- 🇦🇪 **العربية** (`ar`)
 - 🇨🇳 **中文** (`zh`)
 - 🇰🇬 **Кыргызча** (`ky`)
 - 🇰🇿 **Қазақша** (`kk`)
