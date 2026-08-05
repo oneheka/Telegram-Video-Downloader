@@ -1,27 +1,28 @@
-name: CD / Auto Deploy to VDS
+name: Deploy
 
 on:
-    push:
-        branches: [ main ]
+    workflow_run:
+        workflows: [CI]
+        types: [completed]
+        branches: [main]
+    workflow_dispatch:
 
 jobs:
     deploy:
-        name: Deploy to Production VDS
+        name: Deploy to VDS
         runs-on: ubuntu-latest
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
         steps:
-            - name: Checkout Repository
-              uses: actions/checkout@v4
-
-            - name: Execute Remote SSH Commands
-              uses: appleboy/ssh-action@v1.0.3
+            - name: Deploy via SSH
+              uses: appleboy/ssh-action@v1
               with:
                   host: ${{ secrets.VDS_HOST }}
                   username: ${{ secrets.VDS_USER }}
                   key: ${{ secrets.VDS_SSH_KEY }}
                   script: |
-                      cd ~/work/Telegram-Video-Downloader || cd ~/work/loaddrop_bot
+                      cd ${{ secrets.VDS_PROJECT_PATH }}
                       git pull origin main
-                      npm install
-                      pm2 restart loaddrop || pm2 start npm --name loaddrop -- run start
+                      npm ci --production
+                      pm2 restart ${{ secrets.VDS_APP_NAME }} || pm2 start npm --name ${{ secrets.VDS_APP_NAME }} -- run start
                       pm2 save
