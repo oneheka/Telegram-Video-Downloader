@@ -1,0 +1,21 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Temporary and binary files
+bin/
+temp/
+*.log
+
+# OS and IDE metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# oneheka
+.agents/
