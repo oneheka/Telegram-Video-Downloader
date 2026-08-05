@@ -1,0 +1,27 @@
+name: CD / Auto Deploy to VDS
+
+on:
+    push:
+        branches: [ main ]
+
+jobs:
+    deploy:
+        name: Deploy to Production VDS
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout Repository
+              uses: actions/checkout@v4
+
+            - name: Execute Remote SSH Commands
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                  host: ${{ secrets.VDS_HOST }}
+                  username: ${{ secrets.VDS_USER }}
+                  key: ${{ secrets.VDS_SSH_KEY }}
+                  script: |
+                      cd ~/work/Telegram-Video-Downloader || cd ~/work/loaddrop_bot
+                      git pull origin main
+                      npm install
+                      pm2 restart loaddrop || pm2 start npm --name loaddrop -- run start
+                      pm2 save
