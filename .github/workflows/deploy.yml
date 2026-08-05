@@ -22,7 +22,14 @@ jobs:
                   key: ${{ secrets.VDS_SSH_KEY }}
                   script: |
                       cd ${{ secrets.VDS_PROJECT_PATH }}
-                      git pull origin main
+                      export PATH=$PATH:/usr/local/bin:/usr/bin:~/.nvm/versions/node/$(ls ~/.nvm/versions/node 2>/dev/null | tail -n 1)/bin
+                      source ~/.bashrc || true
+                      
+                      cd ${{ secrets.VDS_PROJECT_PATH }}
+                      git fetch origin main
+                      git reset --hard origin/main
+                      git clean -fd
+
                       npm ci --production
                       pm2 restart ${{ secrets.VDS_APP_NAME }} || pm2 start npm --name ${{ secrets.VDS_APP_NAME }} -- run start
                       pm2 save
