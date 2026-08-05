@@ -1,40 +1,40 @@
 # 🚀 Telegram Video Downloader Bot
 
-Многофункциональный Telegram-бот для автоматического выкачивания и отправки видеороликов с 7 популярных медиа-платформ, написанный на **TypeScript**, **Node.js (`tsx`)**, **grammY** и **Drizzle ORM** с базой данных **PostgreSQL**.
+A feature-rich Telegram bot for automatically downloading and sending video content from 7 popular media platforms, built with **TypeScript**, **Node.js (`tsx`)**, **grammY**, and **Drizzle ORM** with a **PostgreSQL** database.
 
 ---
 
-## 🌟 Поддерживаемые платформы
+## 🌟 Supported Platforms
 
 - 📸 **Instagram** (Reels / Posts / IGTV)
 - 🎵 **TikTok**
 - 🔴 **YouTube Shorts** (`youtube.com/shorts/...`)
 - 🐦 **Twitter / X** (`twitter.com` / `x.com`)
-- 🔵 **VK** (VK Клипы и VK Видео)
+- 🔵 **VK** (VK Clips and VK Video)
 - 🤖 **Reddit** (`reddit.com` / `v.redd.it`)
 - 📌 **Pinterest** (`pinterest.com` / `pin.it`)
 
 ---
 
-## 🔥 Ключевые возможности
+## 🔥 Key Features
 
-### ⚡ Автоматическое распознавание
-Бот мгновенно перехватывает ссылки из сообщений в личных диалогах и группах без необходимости вводить команды вроде `/download`.
+### ⚡ Automatic Link Recognition
+The bot automatically detects and intercepts media links from personal chats and groups without requiring slash commands like `/download`.
 
-### ♻️ Умный детектор повторных видео (Баянометр)
-- Сохраняет историю отправленных видео в разрезе каждой группы в таблицу PostgreSQL `media_history`.
-- Данные автоматически хранятся **7 дней**, после чего очищаются фоновым кроном.
-- Если участник отправляет ссылку на ролик, который выкачивался ранее:
-  - Бот **не выкачивает файл повторно**, экономя трафик и ресурсы сервера.
-  - Бот **отвечает реплаем прямо на оригинальное сообщение с видео**: `♻️ @repeat_user, это видео недавно уже отправлял(а) first_author!`.
-  - Повторно присланная ссылка автоматически удаляется (при включенном автоудалении).
-  - Первого отправителя не пингует лишний раз, а повторяющего — упоминает с `@`.
-  - Если оригинальное видео было удалено из группы, бот сбрасывает устаревшую запись из БД и скачивает ролик заново.
+### ♻️ Smart Duplicate Video Detection (Repost Warning)
+- Stores group media history in the PostgreSQL `media_history` table.
+- Media records are automatically retained for **7 days** and cleared via a background cron process.
+- If a group member sends a link to a video that was previously downloaded:
+  - The bot **does not re-download the file**, saving bandwidth and server resources.
+  - The bot **replies directly to the original video message** with a notice: `♻️ @repeat_user, this video was already sent recently by first_author!`.
+  - Automatically deletes the duplicate link message (when auto-delete is enabled).
+  - Pings the user sending the duplicate with `@`, while mentioning the original sender as plain text to avoid redundant notifications.
+  - If the original video message was deleted from the group, the bot clears the stale record and downloads the video fresh.
 
-### 🌐 Мультиязычность (i18n) — 9 языков
-Поддержка 9 языков с автоопределением:
-- 🇷🇺 **Русский** (`ru`)
+### 🌐 Multi-language Support (i18n) — 9 Languages
+Auto-detection and manual language switching for 9 languages:
 - 🇬🇧 **English** (`en`)
+- 🇷🇺 **Русский** (`ru`)
 - 🇰🇷 **한국어** (`ko`)
 - 🇸🇦 **العربية** (`ar`)
 - 🇨🇳 **中文** (`zh`)
@@ -43,75 +43,75 @@
 - 🇩🇪 **Deutsch** (`de`)
 - 🇫🇷 **Français** (`fr`)
 
-Приоритет определения языка: `настройка группы > настройка пользователя > язык Telegram > дефолтный язык`.
+Language priority order: `Group Setting > User Setting > Telegram Account Language > Default Language`.
 
-### ⚙️ Интерактивное меню настроек (`/start` и `/settings`)
-Удобная Inline-клавиатура с проверкой прав администратора в группах:
-- 🌐 Выбор языка общения.
-- 🗑 Автоудаление исходного сообщения со ссылкой.
-- 👤 Отображение автора отправителя под видео.
-- 📝 Отображение описания ролика.
-- ♻️ Включение/выключении предупреждений о повторах.
+### ⚙️ Interactive Settings Menu (`/start` & `/settings`)
+Inline keyboard menu with admin permission enforcement in group chats:
+- 🌐 Language selection.
+- 🗑 Auto-deletion of source link messages.
+- 👤 Sender attribution toggle below videos.
+- 📝 Video description toggle.
+- ♻️ Repost duplicate warning toggle.
 
-### 🎥 Красивое форматирование и безопасный HTML
-- Заголовок видео под роликом: `@botusername | <a href="link">Перейти</a> | AuthorName`.
-- Все текстовые подписи транслируются через `parse_mode: 'HTML'` с экранированием спецсимволов.
-- Автоматический учет лимита Telegram в 1024 символа (короткие описания идут в подпись к видео, а длинные — отправляются дополнением в следующем сообщении).
+### 🎥 Clean Formatting & Safe HTML
+- Header under videos: `@botusername | <a href="link">Open</a> | AuthorName`.
+- All captions are rendered using safe `parse_mode: 'HTML'` with entity escaping.
+- Automatic handling of Telegram's 1024-character caption limit (short descriptions stay under the video, while longer descriptions follow in a separate message).
 
 ---
 
-## 🛠 Технологический стек
+## 🛠 Tech Stack
 
 - **Runtime**: Node.js (`tsx`)
 - **Bot Framework**: [grammY](https://grammy.dev/) + `@grammyjs/auto-retry`
 - **Database**: PostgreSQL + [Drizzle ORM](https://orm.drizzle.team/)
-- **Media Downloader**: `yt-dlp` (с автоматической выкачкой и правами исполняемого бинарника)
+- **Media Downloader**: `yt-dlp` (with automatic binary download & executable permission setup)
 
 ---
 
-## 🚀 Быстрый запуск и установка
+## 🚀 Quick Start & Installation
 
-### 1. Клонирование и установка зависимостей
+### 1. Clone the repository and install dependencies
 ```bash
 git clone <repository_url>
 cd Telegram_DWbot
 npm install
 ```
 
-### 2. Переменные окружения (`.env`)
-Скопируйте шаблон `.env.example` в `.env` и заполните ваши данные:
+### 2. Environment Variables (`.env`)
+Copy the `.env.example` template to `.env` and fill in your credentials:
 ```bash
 cp .env.example .env
 ```
 
-Пример содержимого `.env`:
+Example `.env` content:
 ```env
 BOT_TOKEN=your_telegram_bot_token_here
 DATABASE_URL=postgres://username:password@localhost:5432/database_name
 DEFAULT_LANGUAGE=en
 ```
 
-### 3. Локальный запуск и тестирование
-Запуск в режиме разработки:
+### 3. Local Development & Testing
+Run in development mode:
 ```bash
 npm run dev
 ```
 
-Запуск юнит-тестов:
+Run unit tests:
 ```bash
 npm run test
 ```
 
 ---
 
-## 🏭 Запуск в продакшене (PM2)
+## 🏭 Production Deployment (PM2)
 
-Запуск напрямую через PM2 без дополнительных конфиг-файлов:
+Run directly using PM2:
 ```bash
 pm2 start npm --name loaddrop -- run start
 pm2 save
 ```
-или:
+or:
 ```bash
 pm2 start "npx tsx src/index.ts" --name loaddrop
 pm2 save
@@ -119,21 +119,21 @@ pm2 save
 
 ---
 
-## 📁 Структура проекта
+## 📁 Project Structure
 
 ```
-├── bin/                 # Автоматически загружаемый бинарник yt-dlp (в .gitignore)
+├── bin/                 # Auto-downloaded yt-dlp binary (in .gitignore)
 ├── src/
-│   ├── config.ts        # Загрузка и валидация .env
-│   ├── index.ts         # Главный входной файл бота
-│   ├── db/              # Схема Drizzle ORM и методы запросов к PostgreSQL
-│   ├── downloader/      # Модуль выкачки yt-dlp и регулярных выражений
-│   ├── handlers/        # Обработчики команд, кнопок и ссылок
-│   ├── i18n/            # Мидлварь и логика локализации
-│   └── locales/         # JSON-файлы переводов (en, ru, ko, ar, zh, ky, kk, de, fr)
-├── tests/               # Юнит-тесты extractor'ов и i18n
-├── .env.example         # Шаблон переменных окружения
-├── .gitignore           # Игнорируемые файлы Git
+│   ├── config.ts        # Environment configuration and validation
+│   ├── index.ts         # Main bot entrypoint
+│   ├── db/              # Drizzle ORM schema and PostgreSQL queries
+│   ├── downloader/      # yt-dlp execution engine and URL regex matchers
+│   ├── handlers/        # Command, callback, and link handlers
+│   ├── i18n/            # Localization middleware and resolver
+│   └── locales/         # Translation JSON files (en, ru, ko, ar, zh, ky, kk, de, fr)
+├── tests/               # Unit tests for link extractors and i18n
+├── .env.example         # Environment template
+├── .gitignore           # Git ignore rules
 ├── package.json
 └── tsconfig.json
 ```
