@@ -15,9 +15,11 @@ const PINTEREST_REGEX = /https?:\/\/(?:www\.)?(?:pinterest\.[a-z.]+\/pin\/\d+|pi
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
 export type SupportedPlatform = 'instagram' | 'tiktok' | 'youtube' | 'twitter' | 'vk' | 'reddit' | 'pinterest'
+export type MediaType = 'video' | 'photo'
 
 export interface MediaDownloadResult {
-    filePath: string
+    mediaType: MediaType
+    filePaths: string[]
     title?: string
     mediaKey: string
     fileSizeMB: number
@@ -118,8 +120,8 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         })
     }
 
-    const filePrefix = `video_${Date.now()}_${Math.floor(Math.random() * 10000)}`
-    const outputTemplate = join(tempDir, `${filePrefix}.%(ext)s`)
+    const filePrefix = `media_${Date.now()}_${Math.floor(Math.random() * 10000)}`
+    const outputTemplate = join(tempDir, `${filePrefix}_%(playlist_index|autonumber)02d.%(ext)s`)
 
     const spawnEnv: Record<string, string> = {
         ...(process.env as Record<string, string>),
@@ -147,12 +149,12 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         )
 
         if (metaResult.stdout.trim()) {
-            const data = JSON.parse(metaResult.stdout.trim())
+            const data = JSON.parse(metaResult.stdout.trim().split('\n')[0])
             title = formatCaption(data)
             rawId = data.id || data.display_id || data.webpage_url_basename
         }
     } catch (err) {
-        console.warn('Could not extract video metadata JSON:', err)
+        console.warn('Could not extract media metadata JSON:', err)
     }
 
     const downloadResult = await spawnProcess(
@@ -177,19 +179,37 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     }
 
     const files = readdirSync(tempDir)
-    const downloadedFileName = files.find((f) => f.startsWith(filePrefix))
+        .filter((f) => f.startsWith(filePrefix))
+        .sort()
 
-    if (!downloadedFileName) {
+    if (files.length === 0) {
         throw new Error('Downloaded file not found in temp folder.')
     }
 
-    const filePath = join(tempDir, downloadedFileName)
-    const stats = statSync(filePath)
-    const fileSizeMB = stats.size / (1024 * 1024)
+    const videoExtensions = ['.mp4', '.webm', '.mkv', '.mov']
+    const hasVideo = files.some((f) => videoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
+
+    const mediaType: MediaType = hasVideo ? 'video' : 'photo'
+
+    let targetFiles = files
+    if (hasVideo) {
+        targetFiles = files.filter((f) => videoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
+    }
+
+    const filePaths = targetFiles.map((f) => join(tempDir, f))
+
+    let totalSizeBytes = 0
+    for (const p of filePaths) {
+        try {
+            totalSizeBytes += statSync(p).size
+        } catch {}
+    }
+    const fileSizeMB = totalSizeBytes / (1024 * 1024)
     const mediaKey = `${platform}:${rawId || url}`
 
     return {
-        filePath,
+        mediaType,
+        filePaths,
         title: title || undefined,
         mediaKey,
         fileSizeMB
@@ -227,5 +247,11 @@ export function cleanupFile(filePath: string): void {
         }
     } catch (err) {
         console.error(`Failed to cleanup temp file ${filePath}:`, err)
+    }
+}
+
+export function cleanupFiles(filePaths: string[]): void {
+    for (const p of filePaths) {
+        cleanupFile(p)
     }
 }

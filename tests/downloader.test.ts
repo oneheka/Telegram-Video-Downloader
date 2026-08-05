@@ -1,5 +1,6 @@
 import { extractSupportedUrl } from "@/downloader";
 import { describe, it as test } from "node:test";
+import { chunkArray } from "@/handlers/downloader";
 import { resolveLanguageCode } from "@/i18n";
 import assert from "node:assert/strict";
 
@@ -70,6 +71,23 @@ describe('Downloader Link Extraction Test', () => {
         const text = 'Hello world https://google.com'
         const res = extractSupportedUrl(text)
         assert.equal(res, null)
+    })
+})
+
+describe('Chunk Array Helper Test', () => {
+    test('Splits array of 15 elements into chunks of 10', () => {
+        const items = Array.from({ length: 15 }, (_, i) => `photo_${i + 1}.jpg`)
+        const chunks = chunkArray(items, 10)
+        assert.equal(chunks.length, 2)
+        assert.equal(chunks[0].length, 10)
+        assert.equal(chunks[1].length, 5)
+    })
+
+    test('Returns single chunk for 5 elements', () => {
+        const items = Array.from({ length: 5 }, (_, i) => `photo_${i + 1}.jpg`)
+        const chunks = chunkArray(items, 10)
+        assert.equal(chunks.length, 1)
+        assert.equal(chunks[0].length, 5)
     })
 })
 

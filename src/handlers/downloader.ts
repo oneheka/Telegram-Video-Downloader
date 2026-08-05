@@ -1,5 +1,5 @@
+import { downloadMedia, extractSupportedUrl, cleanupFiles, SupportedPlatform } from "@/downloader";
 import { getChatSettings, getUserSettings, checkIsDuplicate, recordMediaHistory, removeMediaHistory } from "@/db";
-import { downloadMedia, extractSupportedUrl, cleanupFile, SupportedPlatform } from "@/downloader";
 import type { CustomContext } from "@/i18n";
 import { InputFile } from "grammy";
 
@@ -15,6 +15,14 @@ function getQuickMediaKey(url: string, platform: SupportedPlatform): string {
     } catch {
         return `${platform}:${url}`
     }
+}
+
+export function chunkArray<T>(array: T[], chunkSize: number): T[][] {
+    const results: T[][] = []
+    for (let i = 0; i < array.length; i += chunkSize) {
+        results.push(array.slice(i, i + chunkSize))
+    }
+    return results
 }
 
 export async function handleMessageDownloader(ctx: CustomContext, next: () => Promise<void>): Promise<void> {
@@ -109,11 +117,11 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
         }
     }
 
-    let downloadedFilePath: string | null = null
+    let downloadedFilePaths: string[] = []
 
     try {
         const result = await downloadMedia(match.url, match.platform)
-        downloadedFilePath = result.filePath
+        downloadedFilePaths = result.filePaths
 
         if (result.fileSizeMB > 50) {
             if (statusMsg) {
@@ -198,38 +206,92 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
 
         const fullCaptionText = captionLines.join('\n')
 
-        let videoCaption: string | undefined = undefined
+        let mediaCaption: string | undefined = undefined
         let extraTextMessage: string | undefined = undefined
 
         if (fullCaptionText.length <= 1024) {
-            videoCaption = fullCaptionText
+            mediaCaption = fullCaptionText
         } else {
-            videoCaption = headerLine
+            mediaCaption = headerLine
             extraTextMessage = showDescription && result.title ? `🎥 ${escapeHtml(result.title)}` : undefined
         }
 
-        let sentVideoMsg
-        try {
-            sentVideoMsg = await ctx.replyWithVideo(new InputFile(result.filePath), {
-                caption: videoCaption,
-                parse_mode: 'HTML',
-                reply_parameters: !autoDeleteLink && ctx.message ? {
-                    message_id: ctx.message.message_id
-                } : undefined
-            })
-        } catch {
+        let sentMainMsg: { message_id: number } | undefined = undefined
+
+        if (result.mediaType === 'video') {
+            const videoPath = result.filePaths[0]
             try {
-                sentVideoMsg = await ctx.replyWithVideo(new InputFile(result.filePath), {
-                    caption: videoCaption,
-                    parse_mode: 'HTML'
+                sentMainMsg = await ctx.replyWithVideo(new InputFile(videoPath), {
+                    caption: mediaCaption,
+                    parse_mode: 'HTML',
+                    reply_parameters: !autoDeleteLink && ctx.message ? {
+                        message_id: ctx.message.message_id
+                    } : undefined
                 })
             } catch {
-                sentVideoMsg = await ctx.replyWithVideo(new InputFile(result.filePath))
+                try {
+                    sentMainMsg = await ctx.replyWithVideo(new InputFile(videoPath), {
+                        caption: mediaCaption,
+                        parse_mode: 'HTML'
+                    })
+                } catch {
+                    sentMainMsg = await ctx.replyWithVideo(new InputFile(videoPath))
+                }
+            }
+        } else {
+            if (result.filePaths.length === 1) {
+                const photoPath = result.filePaths[0]
+                try {
+                    sentMainMsg = await ctx.replyWithPhoto(new InputFile(photoPath), {
+                        caption: mediaCaption,
+                        parse_mode: 'HTML',
+                        reply_parameters: !autoDeleteLink && ctx.message ? {
+                            message_id: ctx.message.message_id
+                        } : undefined
+                    })
+                } catch {
+                    try {
+                        sentMainMsg = await ctx.replyWithPhoto(new InputFile(photoPath), {
+                            caption: mediaCaption,
+                            parse_mode: 'HTML'
+                        })
+                    } catch {
+                        sentMainMsg = await ctx.replyWithPhoto(new InputFile(photoPath))
+                    }
+                }
+            } else {
+                const chunks = chunkArray(result.filePaths, 10)
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i]
+                    const mediaGroup = chunk.map((path, idx) => {
+                        if (i === 0 && idx === 0) {
+                            return {
+                                type: 'photo' as const,
+                                media: new InputFile(path),
+                                caption: mediaCaption,
+                                parse_mode: 'HTML' as const
+                            }
+                        }
+                        return {
+                            type: 'photo' as const,
+                            media: new InputFile(path)
+                        }
+                    })
+
+                    try {
+                        const sentGroup = await ctx.replyWithMediaGroup(mediaGroup)
+                        if (i === 0 && sentGroup.length > 0) {
+                            sentMainMsg = sentGroup[0]
+                        }
+                    } catch (err) {
+                        console.error('Failed to send media group chunk:', err)
+                    }
+                }
             }
         }
 
-        if (isGroup && checkDuplicates && ctx.chat && ctx.from && sentVideoMsg) {
-            await recordMediaHistory(ctx.chat.id, ctx.from.id, plainAuthorName, effectiveMediaKey, sentVideoMsg.message_id)
+        if (isGroup && checkDuplicates && ctx.chat && ctx.from && sentMainMsg) {
+            await recordMediaHistory(ctx.chat.id, ctx.from.id, plainAuthorName, effectiveMediaKey, sentMainMsg.message_id)
         }
 
         if (extraTextMessage) {
@@ -263,8 +325,8 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
             await ctx.reply(ctx.t('error_download'))
         }
     } finally {
-        if (downloadedFilePath) {
-            cleanupFile(downloadedFilePath)
+        if (downloadedFilePaths.length > 0) {
+            cleanupFiles(downloadedFilePaths)
         }
     }
 }
