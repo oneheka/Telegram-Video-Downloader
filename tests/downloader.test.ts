@@ -186,4 +186,20 @@ describe('Metadata Image Extraction Helper Test', () => {
         assert.equal(urls[0], 'https://example.com/img1.jpg')
         assert.equal(urls[1], 'https://example.com/img2.jpg')
     })
+
+    test('Extracts image URLs from entries array (multi-slide carousels)', () => {
+        const meta = {
+            _type: 'playlist',
+            entries: [
+                { url: 'https://example.com/slide1.jpg' },
+                { url: 'https://example.com/slide2.jpg' },
+                { url: 'https://example.com/slide3.jpg' }
+            ]
+        }
+        const urls = extractImageUrls(meta)
+        assert.equal(urls.length, 3)
+        assert.equal(urls[0], 'https://example.com/slide1.jpg')
+        assert.equal(urls[1], 'https://example.com/slide2.jpg')
+        assert.equal(urls[2], 'https://example.com/slide3.jpg')
+    })
 })

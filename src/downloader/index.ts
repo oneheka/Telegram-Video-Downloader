@@ -115,13 +115,17 @@ export function extractImageUrls(data: any): string[] {
 
     const urls: string[] = []
 
-    if (Array.isArray(data.entries)) {
+    if (Array.isArray(data.entries) && data.entries.length > 0) {
         for (const entry of data.entries) {
-            urls.push(...extractImageUrls(entry))
+            const childUrls = extractImageUrls(entry)
+            urls.push(...childUrls)
+        }
+        if (urls.length > 0) {
+            return Array.from(new Set(urls))
         }
     }
 
-    if (Array.isArray(data.images)) {
+    if (Array.isArray(data.images) && data.images.length > 0) {
         for (const img of data.images) {
             if (typeof img === 'string' && img.startsWith('http')) {
                 urls.push(img)
@@ -129,31 +133,65 @@ export function extractImageUrls(data: any): string[] {
                 urls.push(img.url)
             }
         }
+        if (urls.length > 0) {
+            return Array.from(new Set(urls))
+        }
     }
 
-    if (urls.length === 0 && Array.isArray(data.thumbnails) && data.thumbnails.length > 0) {
+    if (Array.isArray(data.thumbnails) && data.thumbnails.length > 0) {
         const validThumbnails = data.thumbnails.filter(
             (t: any) => t && typeof t.url === 'string' && t.url.startsWith('http')
         )
-        const byId = new Map<string, any[]>()
+
+        const bySlide = new Map<string, any[]>()
         for (const t of validThumbnails) {
-            const idKey = t.id ? String(t.id).split('_')[0] : 'default'
-            if (!byId.has(idKey)) byId.set(idKey, [])
-            byId.get(idKey)!.push(t)
+            let slideKey: string | null = null
+            if (t.id != null) {
+                const strId = String(t.id)
+                const match = strId.match(/\d+/)
+                if (match) {
+                    slideKey = match[0]
+                } else {
+                    slideKey = strId
+                }
+            }
+            if (slideKey) {
+                if (!bySlide.has(slideKey)) bySlide.set(slideKey, [])
+                bySlide.get(slideKey)!.push(t)
+            }
         }
 
-        if (byId.size > 1 && !byId.has('default')) {
-            for (const [, thumbs] of byId.entries()) {
+        if (bySlide.size > 1) {
+            const sortedKeys = Array.from(bySlide.keys()).sort((a, b) => {
+                const numA = parseInt(a, 10)
+                const numB = parseInt(b, 10)
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB
+                return a.localeCompare(b)
+            })
+            for (const key of sortedKeys) {
+                const thumbs = bySlide.get(key)!
                 thumbs.sort((a: any, b: any) => (b.width || 0) * (b.height || 0) - (a.width || 0) * (a.height || 0))
                 urls.push(thumbs[0].url)
             }
         } else if (validThumbnails.length > 0) {
-            validThumbnails.sort((a: any, b: any) => (b.width || 0) * (b.height || 0) - (a.width || 0) * (a.height || 0))
-            urls.push(validThumbnails[0].url)
+            const uniqueBases = new Map<string, any>()
+            for (const t of validThumbnails) {
+                const basePath = t.url.split('?')[0]
+                if (!uniqueBases.has(basePath)) {
+                    uniqueBases.set(basePath, t)
+                }
+            }
+            for (const t of uniqueBases.values()) {
+                urls.push(t.url)
+            }
+        }
+
+        if (urls.length > 0) {
+            return Array.from(new Set(urls))
         }
     }
 
-    if (urls.length === 0 && typeof data.url === 'string' && data.url.startsWith('http')) {
+    if (typeof data.url === 'string' && data.url.startsWith('http')) {
         const ext = data.url.split('?')[0].toLowerCase()
         if (['.jpg', '.jpeg', '.png', '.webp', '.heic'].some((e) => ext.endsWith(e))) {
             urls.push(data.url)
@@ -191,14 +229,20 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let rawId: string | undefined = undefined
     let rawMeta: any = null
 
+    const commonArgs = [
+        '--encoding', 'utf-8',
+        '--user-agent', USER_AGENT,
+        '--extractor-args', 'youtube:player_client=android,web'
+    ]
+    if (platform === 'youtube') {
+        commonArgs.unshift('--no-playlist')
+    }
+
     try {
         const metaResult = await spawnProcess(
             binPath,
             [
-                '--no-playlist',
-                '--encoding', 'utf-8',
-                '--user-agent', USER_AGENT,
-                '--extractor-args', 'youtube:player_client=android,web',
+                ...commonArgs,
                 '--dump-json',
                 '--skip-download',
                 '--no-warnings',
@@ -219,10 +263,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let downloadResult = await spawnProcess(
         binPath,
         [
-            '--no-playlist',
-            '--encoding', 'utf-8',
-            '--user-agent', USER_AGENT,
-            '--extractor-args', 'youtube:player_client=android,web',
+            ...commonArgs,
             '-f', 'b[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             '--merge-output-format', 'mp4',
             '-o', outputTemplate,
@@ -236,10 +277,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         downloadResult = await spawnProcess(
             binPath,
             [
-                '--no-playlist',
-                '--encoding', 'utf-8',
-                '--user-agent', USER_AGENT,
-                '--extractor-args', 'youtube:player_client=android,web',
+                ...commonArgs,
                 '--write-all-thumbnails',
                 '--convert-thumbnails', 'jpg',
                 '-o', outputTemplate,
