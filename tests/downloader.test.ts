@@ -1,4 +1,4 @@
-import { extractSupportedUrl } from "@/downloader";
+import { extractSupportedUrl, extractImageUrls } from "@/downloader";
 import { describe, it as test } from "node:test";
 import { chunkArray } from "@/handlers/downloader";
 import { resolveLanguageCode } from "@/i18n";
@@ -156,5 +156,34 @@ describe('i18n Language Resolution Test', () => {
     test('Returns null for unsupported languages', () => {
         assert.equal(resolveLanguageCode('es'), null)
         assert.equal(resolveLanguageCode('it'), null)
+    })
+})
+
+describe('Metadata Image Extraction Helper Test', () => {
+    test('Extracts image URLs from thumbnails array', () => {
+        const meta = {
+            thumbnails: [
+                { id: '0_low', url: 'https://example.com/slide0_small.jpg', width: 100, height: 100 },
+                { id: '0_high', url: 'https://example.com/slide0_large.jpg', width: 1000, height: 1000 },
+                { id: '1_high', url: 'https://example.com/slide1_large.jpg', width: 1000, height: 1000 }
+            ]
+        }
+        const urls = extractImageUrls(meta)
+        assert.equal(urls.length, 2)
+        assert.equal(urls[0], 'https://example.com/slide0_large.jpg')
+        assert.equal(urls[1], 'https://example.com/slide1_large.jpg')
+    })
+
+    test('Extracts image URLs from images array', () => {
+        const meta = {
+            images: [
+                'https://example.com/img1.jpg',
+                { url: 'https://example.com/img2.jpg' }
+            ]
+        }
+        const urls = extractImageUrls(meta)
+        assert.equal(urls.length, 2)
+        assert.equal(urls[0], 'https://example.com/img1.jpg')
+        assert.equal(urls[1], 'https://example.com/img2.jpg')
     })
 })

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from "fs";
+import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync, writeFileSync } from "fs";
 import { getBinPath } from "@/downloader/bin";
 import { spawn } from "child_process";
 import { join } from "path";
@@ -110,6 +110,59 @@ export function extractSupportedUrl(text: string): { url: string; platform: Supp
     return null
 }
 
+export function extractImageUrls(data: any): string[] {
+    if (!data) return []
+
+    const urls: string[] = []
+
+    if (Array.isArray(data.entries)) {
+        for (const entry of data.entries) {
+            urls.push(...extractImageUrls(entry))
+        }
+    }
+
+    if (Array.isArray(data.images)) {
+        for (const img of data.images) {
+            if (typeof img === 'string' && img.startsWith('http')) {
+                urls.push(img)
+            } else if (img && typeof img.url === 'string' && img.url.startsWith('http')) {
+                urls.push(img.url)
+            }
+        }
+    }
+
+    if (urls.length === 0 && Array.isArray(data.thumbnails) && data.thumbnails.length > 0) {
+        const validThumbnails = data.thumbnails.filter(
+            (t: any) => t && typeof t.url === 'string' && t.url.startsWith('http')
+        )
+        const byId = new Map<string, any[]>()
+        for (const t of validThumbnails) {
+            const idKey = t.id ? String(t.id).split('_')[0] : 'default'
+            if (!byId.has(idKey)) byId.set(idKey, [])
+            byId.get(idKey)!.push(t)
+        }
+
+        if (byId.size > 1 && !byId.has('default')) {
+            for (const [, thumbs] of byId.entries()) {
+                thumbs.sort((a: any, b: any) => (b.width || 0) * (b.height || 0) - (a.width || 0) * (a.height || 0))
+                urls.push(thumbs[0].url)
+            }
+        } else if (validThumbnails.length > 0) {
+            validThumbnails.sort((a: any, b: any) => (b.width || 0) * (b.height || 0) - (a.width || 0) * (a.height || 0))
+            urls.push(validThumbnails[0].url)
+        }
+    }
+
+    if (urls.length === 0 && typeof data.url === 'string' && data.url.startsWith('http')) {
+        const ext = data.url.split('?')[0].toLowerCase()
+        if (['.jpg', '.jpeg', '.png', '.webp', '.heic'].some((e) => ext.endsWith(e))) {
+            urls.push(data.url)
+        }
+    }
+
+    return Array.from(new Set(urls))
+}
+
 export async function downloadMedia(url: string, platform: SupportedPlatform): Promise<MediaDownloadResult> {
     const binPath = getBinPath()
     const tempDir = join(tmpdir(), 'telegram_dwbot')
@@ -136,6 +189,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
 
     let title: string | undefined = undefined
     let rawId: string | undefined = undefined
+    let rawMeta: any = null
 
     try {
         const metaResult = await spawnProcess(
@@ -154,9 +208,9 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         )
 
         if (metaResult.stdout.trim()) {
-            const data = JSON.parse(metaResult.stdout.trim().split('\n')[0])
-            title = formatCaption(data)
-            rawId = data.id || data.display_id || data.webpage_url_basename
+            rawMeta = JSON.parse(metaResult.stdout.trim().split('\n')[0])
+            title = formatCaption(rawMeta)
+            rawId = rawMeta.id || rawMeta.display_id || rawMeta.webpage_url_basename
         }
     } catch (err) {
         console.warn('Could not extract media metadata JSON:', err)
@@ -186,6 +240,8 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
                 '--encoding', 'utf-8',
                 '--user-agent', USER_AGENT,
                 '--extractor-args', 'youtube:player_client=android,web',
+                '--write-all-thumbnails',
+                '--convert-thumbnails', 'jpg',
                 '-o', outputTemplate,
                 '--no-warnings',
                 targetUrl
@@ -203,20 +259,49 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         .filter((f) => f.startsWith(filePrefix))
         .sort()
 
-    if (files.length === 0) {
-        throw new Error('Downloaded file not found in temp folder.')
+    const videoExtensions = ['.mp4', '.webm', '.mkv', '.mov', '.avi', '.flv']
+    const photoExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.gif']
+
+    let videoFiles = files.filter((f) => videoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
+    let photoFiles = files.filter((f) => photoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
+
+    if (videoFiles.length === 0 && photoFiles.length === 0 && rawMeta) {
+        const extractedUrls = extractImageUrls(rawMeta)
+        if (extractedUrls.length > 0) {
+            const downloaded: string[] = []
+            for (let i = 0; i < extractedUrls.length; i++) {
+                const imgUrl = extractedUrls[i]
+                try {
+                    const controller = new AbortController()
+                    const timeoutId = setTimeout(() => controller.abort(), 10000)
+                    const res = await fetch(imgUrl, {
+                        headers: { 'User-Agent': USER_AGENT },
+                        signal: controller.signal
+                    })
+                    clearTimeout(timeoutId)
+                    if (res.ok) {
+                        const arrayBuf = await res.arrayBuffer()
+                        const photoName = `${filePrefix}_extracted_${String(i + 1).padStart(2, '0')}.jpg`
+                        const photoPath = join(tempDir, photoName)
+                        writeFileSync(photoPath, Buffer.from(arrayBuf))
+                        downloaded.push(photoName)
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch extracted image ${imgUrl}:`, e)
+                }
+            }
+            if (downloaded.length > 0) {
+                photoFiles = downloaded
+            }
+        }
     }
 
-    const videoExtensions = ['.mp4', '.webm', '.mkv', '.mov']
-    const hasVideo = files.some((f) => videoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
-
-    const mediaType: MediaType = hasVideo ? 'video' : 'photo'
-
-    let targetFiles = files
-    if (hasVideo) {
-        targetFiles = files.filter((f) => videoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
+    if (videoFiles.length === 0 && photoFiles.length === 0) {
+        throw new Error('No valid video or photo media found in link.')
     }
 
+    const mediaType: MediaType = videoFiles.length > 0 ? 'video' : 'photo'
+    const targetFiles = videoFiles.length > 0 ? videoFiles : photoFiles
     const filePaths = targetFiles.map((f) => join(tempDir, f))
 
     let totalSizeBytes = 0
