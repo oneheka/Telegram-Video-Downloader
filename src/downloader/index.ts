@@ -201,6 +201,44 @@ export function extractImageUrls(data: any): string[] {
     return Array.from(new Set(urls))
 }
 
+async function fetchTikTokPhotoPost(url: string): Promise<{ images: string[]; title?: string } | null> {
+    try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+        const res = await fetch('https://www.tikwm.com/api/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'User-Agent': USER_AGENT
+            },
+            body: new URLSearchParams({ url }),
+            signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+
+        if (!res.ok) return null
+        const json = await res.json()
+        if (json.code === 0 && json.data) {
+            const images: string[] = []
+            if (Array.isArray(json.data.images) && json.data.images.length > 0) {
+                for (const img of json.data.images) {
+                    if (typeof img === 'string' && img.startsWith('http')) {
+                        images.push(img)
+                    }
+                }
+            }
+            return {
+                images: Array.from(new Set(images)),
+                title: json.data.title || undefined
+            }
+        }
+    } catch (err) {
+        console.warn('TikWM API fetch failed:', err)
+    }
+    return null
+}
+
 export async function downloadMedia(url: string, platform: SupportedPlatform): Promise<MediaDownloadResult> {
     const binPath = getBinPath()
     const tempDir = join(tmpdir(), 'telegram_dwbot')
@@ -302,6 +340,40 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
 
     let videoFiles = files.filter((f) => videoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
     let photoFiles = files.filter((f) => photoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
+
+    if (platform === 'tiktok' && videoFiles.length === 0 && photoFiles.length <= 1) {
+        const tikwmData = await fetchTikTokPhotoPost(url)
+        if (tikwmData && tikwmData.images.length > 0) {
+            if (!title && tikwmData.title) {
+                title = tikwmData.title
+            }
+            const downloaded: string[] = []
+            for (let i = 0; i < tikwmData.images.length; i++) {
+                const imgUrl = tikwmData.images[i]
+                try {
+                    const controller = new AbortController()
+                    const timeoutId = setTimeout(() => controller.abort(), 10000)
+                    const res = await fetch(imgUrl, {
+                        headers: { 'User-Agent': USER_AGENT },
+                        signal: controller.signal
+                    })
+                    clearTimeout(timeoutId)
+                    if (res.ok) {
+                        const arrayBuf = await res.arrayBuffer()
+                        const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
+                        const photoPath = join(tempDir, photoName)
+                        writeFileSync(photoPath, Buffer.from(arrayBuf))
+                        downloaded.push(photoName)
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch TikTok slide image ${imgUrl}:`, e)
+                }
+            }
+            if (downloaded.length > 0) {
+                photoFiles = downloaded
+            }
+        }
+    }
 
     if (videoFiles.length === 0 && photoFiles.length === 0 && rawMeta) {
         const extractedUrls = extractImageUrls(rawMeta)
