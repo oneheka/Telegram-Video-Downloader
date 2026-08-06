@@ -4,13 +4,13 @@ import { spawn } from "child_process";
 import { join } from "path";
 import { tmpdir } from "os";
 
-const INSTAGRAM_REGEX = /https?:\/\/(?:www\.)?(?:instagram\.com|instagr\.am)\/(?:p|reel|tv)\/[A-Za-z0-9_-]+\/?(?:\?[^\s]*)?/i
-const TIKTOK_REGEX = /https?:\/\/(?:www\.|vm\.|vt\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w.-]+|\w+)\/?(?:\?[^\s]*)?/i
+const INSTAGRAM_REGEX = /https?:\/\/(?:www\.)?(?:instagram\.com|instagr\.am)\/(?:p|reel|reels|tv|share\/(?:p|reel))\/[A-Za-z0-9_-]+\/?(?:\?[^\s]*)?/i
+const TIKTOK_REGEX = /https?:\/\/(?:www\.|vm\.|vt\.)?tiktok\.com\/(?:@[\w.-]+\/(?:video|photo)\/\d+|[\w.-]+|\w+)\/?(?:\?[^\s]*)?/i
 const YOUTUBE_SHORTS_REGEX = /https?:\/\/(?:www\.)?youtube\.com\/shorts\/[A-Za-z0-9_-]+\/?(?:\?[^\s]*)?/i
-const TWITTER_X_REGEX = /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/(?:[\w.-]+)\/status\/\d+\/?(?:\?[^\s]*)?/i
-const VK_REGEX = /https?:\/\/(?:www\.)?(?:vk\.com|vk\.ru)\/(?:clip|video)[-?\d_]+\/?(?:\?[^\s]*)?/i
-const REDDIT_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com\/r\/[\w.-]+\/comments\/\w+(?:\/[\w.-]*)?|v\.redd\.it\/\w+)\/?(?:\?[^\s]*)?/i
-const PINTEREST_REGEX = /https?:\/\/(?:www\.)?(?:pinterest\.[a-z.]+\/pin\/\d+|pin\.it\/\w+)\/?(?:\?[^\s]*)?/i
+const TWITTER_X_REGEX = /https?:\/\/(?:www\.|mobile\.)?(?:twitter\.com|x\.com)\/(?:[\w.-]+)\/status\/\d+\/?(?:\?[^\s]*)?/i
+const VK_REGEX = /https?:\/\/(?:www\.|m\.)?(?:vk\.com|vk\.ru)\/(?:clip|video|wall)[-?\d_]+\/?(?:\?[^\s]*)?/i
+const REDDIT_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com\/r\/[\w.-]+\/comments\/\w+(?:\/[\w.-]*)?|[vi]\.redd\.it\/\w+)\/?(?:\?[^\s]*)?/i
+const PINTEREST_REGEX = /https?:\/\/(?:www\.)?(?:pinterest\.[a-z.]+\/pin\/\d+|pin\.it\/[\w-]+)\/?(?:\?[^\s]*)?/i
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
@@ -120,6 +120,11 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         })
     }
 
+    let targetUrl = url
+    if (platform === 'tiktok') {
+        targetUrl = targetUrl.replace(/\/photo\//i, '/video/')
+    }
+
     const filePrefix = `media_${Date.now()}_${Math.floor(Math.random() * 10000)}`
     const outputTemplate = join(tempDir, `${filePrefix}_%(playlist_index|autonumber)02d.%(ext)s`)
 
@@ -143,7 +148,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
                 '--dump-json',
                 '--skip-download',
                 '--no-warnings',
-                url
+                targetUrl
             ],
             spawnEnv
         )
@@ -157,7 +162,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         console.warn('Could not extract media metadata JSON:', err)
     }
 
-    const downloadResult = await spawnProcess(
+    let downloadResult = await spawnProcess(
         binPath,
         [
             '--no-playlist',
@@ -168,10 +173,26 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
             '--merge-output-format', 'mp4',
             '-o', outputTemplate,
             '--no-warnings',
-            url
+            targetUrl
         ],
         spawnEnv
     )
+
+    if (downloadResult.exitCode !== 0) {
+        downloadResult = await spawnProcess(
+            binPath,
+            [
+                '--no-playlist',
+                '--encoding', 'utf-8',
+                '--user-agent', USER_AGENT,
+                '--extractor-args', 'youtube:player_client=android,web',
+                '-o', outputTemplate,
+                '--no-warnings',
+                targetUrl
+            ],
+            spawnEnv
+        )
+    }
 
     if (downloadResult.exitCode !== 0) {
         console.error('yt-dlp stderr:', downloadResult.stderr)

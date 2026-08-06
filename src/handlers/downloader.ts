@@ -10,7 +10,10 @@ function escapeHtml(text: string): string {
 function getQuickMediaKey(url: string, platform: SupportedPlatform): string {
     try {
         const u = new URL(url)
-        const path = u.pathname.replace(/\/$/, '')
+        let path = u.pathname.replace(/\/$/, '')
+        if (platform === 'tiktok') {
+            path = path.replace(/\/photo\//i, '/video/')
+        }
         return `${platform}:${path}`
     } catch {
         return `${platform}:${url}`

@@ -21,6 +21,14 @@ describe('Downloader Link Extraction Test', () => {
         assert.equal(res?.url, 'https://vm.tiktok.com/ZM8xQy123/')
     })
 
+    test('Detects TikTok photo post link', () => {
+        const text = 'Look at this photo https://www.tiktok.com/@arqsvild/photo/7670305590068923656?_r=1&_t=ZS-98d1AbjVTcq'
+        const res = extractSupportedUrl(text)
+        assert.notEqual(res, null)
+        assert.equal(res?.platform, 'tiktok')
+        assert.equal(res?.url, 'https://www.tiktok.com/@arqsvild/photo/7670305590068923656?_r=1&_t=ZS-98d1AbjVTcq')
+    })
+
     test('Detects YouTube Shorts link', () => {
         const text = 'Hey watch https://youtube.com/shorts/dQw4w9WgXcQ?feature=share'
         const res = extractSupportedUrl(text)
@@ -35,6 +43,14 @@ describe('Downloader Link Extraction Test', () => {
         assert.equal(res, null)
     })
 
+    test('Detects Instagram photo post and share links', () => {
+        const text = 'Look at post https://www.instagram.com/p/C3x9zY1oABc/'
+        const res = extractSupportedUrl(text)
+        assert.notEqual(res, null)
+        assert.equal(res?.platform, 'instagram')
+        assert.equal(res?.url, 'https://www.instagram.com/p/C3x9zY1oABc/')
+    })
+
     test('Detects Twitter/X status link', () => {
         const text = 'Check this tweet https://x.com/user/status/1234567890?s=20'
         const res = extractSupportedUrl(text)
@@ -43,20 +59,20 @@ describe('Downloader Link Extraction Test', () => {
         assert.equal(res?.url, 'https://x.com/user/status/1234567890?s=20')
     })
 
-    test('Detects VK Clip link', () => {
-        const text = 'Watch clip https://vk.com/clip-12345_67890'
+    test('Detects VK Clip and Wall links', () => {
+        const text = 'Watch clip https://vk.com/wall-12345_67890'
         const res = extractSupportedUrl(text)
         assert.notEqual(res, null)
         assert.equal(res?.platform, 'vk')
-        assert.equal(res?.url, 'https://vk.com/clip-12345_67890')
+        assert.equal(res?.url, 'https://vk.com/wall-12345_67890')
     })
 
-    test('Detects Reddit video link', () => {
-        const text = 'Check reddit https://www.reddit.com/r/funny/comments/123abc/some_title/'
+    test('Detects Reddit image link', () => {
+        const text = 'Check reddit https://i.redd.it/abc123456'
         const res = extractSupportedUrl(text)
         assert.notEqual(res, null)
         assert.equal(res?.platform, 'reddit')
-        assert.equal(res?.url, 'https://www.reddit.com/r/funny/comments/123abc/some_title/')
+        assert.equal(res?.url, 'https://i.redd.it/abc123456')
     })
 
     test('Detects Pinterest pin link', () => {
