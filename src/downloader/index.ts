@@ -23,6 +23,9 @@ export interface MediaDownloadResult {
     title?: string
     mediaKey: string
     fileSizeMB: number
+    width?: number
+    height?: number
+    duration?: number
 }
 
 function spawnProcess(binPath: string, args: string[], spawnEnv: Record<string, string>): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -261,6 +264,9 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let title: string | undefined = undefined
     let rawId: string | undefined = undefined
     let rawMeta: any = null
+    let width: number | undefined = undefined
+    let height: number | undefined = undefined
+    let duration: number | undefined = undefined
 
     if (platform === 'tiktok' && /\/photo\//i.test(url)) {
         const tikwmData = await fetchTikTokPhotoPost(url)
@@ -338,6 +344,16 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
             rawMeta = JSON.parse(metaResult.stdout.trim().split('\n')[0])
             title = formatCaption(rawMeta)
             rawId = rawMeta.id || rawMeta.display_id || rawMeta.webpage_url_basename
+
+            if (typeof rawMeta.width === 'number' && rawMeta.width > 0) {
+                width = rawMeta.width
+            }
+            if (typeof rawMeta.height === 'number' && rawMeta.height > 0) {
+                height = rawMeta.height
+            }
+            if (typeof rawMeta.duration === 'number' && rawMeta.duration > 0) {
+                duration = Math.round(rawMeta.duration)
+            }
         }
     } catch (err) {
         console.warn('Could not extract media metadata JSON:', err)
@@ -349,6 +365,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
             ...commonArgs,
             '-f', 'b[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             '--merge-output-format', 'mp4',
+            '--ppa', 'Merger+ffmpeg:-movflags +faststart',
             '-o', outputTemplate,
             '--no-warnings',
             targetUrl
@@ -476,7 +493,10 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         filePaths,
         title: title || undefined,
         mediaKey,
-        fileSizeMB
+        fileSizeMB,
+        width,
+        height,
+        duration
     }
 }
 

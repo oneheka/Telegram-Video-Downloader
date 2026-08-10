@@ -10,10 +10,7 @@ function escapeHtml(text: string): string {
 function getQuickMediaKey(url: string, platform: SupportedPlatform): string {
     try {
         const u = new URL(url)
-        let path = u.pathname.replace(/\/$/, '')
-        if (platform === 'tiktok') {
-            path = path.replace(/\/photo\//i, '/video/')
-        }
+        const path = u.pathname.replace(/\/$/, '')
         return `${platform}:${path}`
     } catch {
         return `${platform}:${url}`
@@ -227,6 +224,10 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                 sentMainMsg = await ctx.replyWithVideo(new InputFile(videoPath), {
                     caption: mediaCaption,
                     parse_mode: 'HTML',
+                    width: result.width,
+                    height: result.height,
+                    duration: result.duration,
+                    supports_streaming: true,
                     reply_parameters: !autoDeleteLink && ctx.message ? {
                         message_id: ctx.message.message_id
                     } : undefined
@@ -235,7 +236,11 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                 try {
                     sentMainMsg = await ctx.replyWithVideo(new InputFile(videoPath), {
                         caption: mediaCaption,
-                        parse_mode: 'HTML'
+                        parse_mode: 'HTML',
+                        width: result.width,
+                        height: result.height,
+                        duration: result.duration,
+                        supports_streaming: true
                     })
                 } catch {
                     sentMainMsg = await ctx.replyWithVideo(new InputFile(videoPath))
