@@ -249,11 +249,6 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         })
     }
 
-    let targetUrl = url
-    if (platform === 'tiktok') {
-        targetUrl = targetUrl.replace(/\/photo\//i, '/video/')
-    }
-
     const filePrefix = `media_${Date.now()}_${Math.floor(Math.random() * 10000)}`
     const outputTemplate = join(tempDir, `${filePrefix}_%(playlist_index|autonumber)02d.%(ext)s`)
 
@@ -266,6 +261,56 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let title: string | undefined = undefined
     let rawId: string | undefined = undefined
     let rawMeta: any = null
+
+    if (platform === 'tiktok' && /\/photo\//i.test(url)) {
+        const tikwmData = await fetchTikTokPhotoPost(url)
+        if (tikwmData && tikwmData.images.length > 0) {
+            title = tikwmData.title
+            const photoFiles: string[] = []
+            for (let i = 0; i < tikwmData.images.length; i++) {
+                const imgUrl = tikwmData.images[i]
+                try {
+                    const controller = new AbortController()
+                    const timeoutId = setTimeout(() => controller.abort(), 10000)
+                    const res = await fetch(imgUrl, {
+                        headers: { 'User-Agent': USER_AGENT },
+                        signal: controller.signal
+                    })
+                    clearTimeout(timeoutId)
+                    if (res.ok) {
+                        const arrayBuf = await res.arrayBuffer()
+                        const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
+                        const photoPath = join(tempDir, photoName)
+                        writeFileSync(photoPath, Buffer.from(arrayBuf))
+                        photoFiles.push(photoName)
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch TikTok slide image ${imgUrl}:`, e)
+                }
+            }
+            if (photoFiles.length > 0) {
+                const filePaths = photoFiles.map((f) => join(tempDir, f))
+                let totalSizeBytes = 0
+                for (const p of filePaths) {
+                    try {
+                        totalSizeBytes += statSync(p).size
+                    } catch {}
+                }
+                return {
+                    mediaType: 'photo',
+                    filePaths,
+                    title: title || undefined,
+                    mediaKey: `${platform}:${url}`,
+                    fileSizeMB: totalSizeBytes / (1024 * 1024)
+                }
+            }
+        }
+    }
+
+    let targetUrl = url
+    if (platform === 'tiktok') {
+        targetUrl = targetUrl.replace(/\/photo\//i, '/video/')
+    }
 
     const commonArgs = [
         '--encoding', 'utf-8',
@@ -326,11 +371,6 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         )
     }
 
-    if (downloadResult.exitCode !== 0) {
-        console.error('yt-dlp stderr:', downloadResult.stderr)
-        throw new Error(`yt-dlp exited with code ${downloadResult.exitCode}`)
-    }
-
     const files = readdirSync(tempDir)
         .filter((f) => f.startsWith(filePrefix))
         .sort()
@@ -341,7 +381,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let videoFiles = files.filter((f) => videoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
     let photoFiles = files.filter((f) => photoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
 
-    if (platform === 'tiktok' && videoFiles.length === 0 && photoFiles.length <= 1) {
+    if (platform === 'tiktok' && videoFiles.length === 0 && photoFiles.length === 0) {
         const tikwmData = await fetchTikTokPhotoPost(url)
         if (tikwmData && tikwmData.images.length > 0) {
             if (!title && tikwmData.title) {
@@ -354,7 +394,9 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
                     const controller = new AbortController()
                     const timeoutId = setTimeout(() => controller.abort(), 10000)
                     const res = await fetch(imgUrl, {
-                        headers: { 'User-Agent': USER_AGENT },
+                        headers: {
+                            'User-Agent': USER_AGENT
+                        },
                         signal: controller.signal
                     })
                     clearTimeout(timeoutId)
@@ -385,7 +427,9 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
                     const controller = new AbortController()
                     const timeoutId = setTimeout(() => controller.abort(), 10000)
                     const res = await fetch(imgUrl, {
-                        headers: { 'User-Agent': USER_AGENT },
+                        headers: {
+                            'User-Agent': USER_AGENT
+                        },
                         signal: controller.signal
                     })
                     clearTimeout(timeoutId)
@@ -407,6 +451,10 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     }
 
     if (videoFiles.length === 0 && photoFiles.length === 0) {
+        if (downloadResult.exitCode !== 0) {
+            console.error('yt-dlp stderr:', downloadResult.stderr)
+            throw new Error(`yt-dlp exited with code ${downloadResult.exitCode}`)
+        }
         throw new Error('No valid video or photo media found in link.')
     }
 
