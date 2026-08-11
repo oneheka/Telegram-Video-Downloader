@@ -204,10 +204,10 @@ export function extractImageUrls(data: any): string[] {
     return Array.from(new Set(urls))
 }
 
-async function fetchTikTokPhotoPost(url: string): Promise<{ images: string[]; title?: string } | null> {
+async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string): Promise<MediaDownloadResult | null> {
     try {
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 10000)
+        const timeoutId = setTimeout(() => controller.abort(), 12000)
 
         const res = await fetch('https://www.tikwm.com/api/', {
             method: 'POST',
@@ -215,29 +215,87 @@ async function fetchTikTokPhotoPost(url: string): Promise<{ images: string[]; ti
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'User-Agent': USER_AGENT
             },
-            body: new URLSearchParams({ url }),
+            body: new URLSearchParams({ url, hd: '1' }),
             signal: controller.signal
         })
         clearTimeout(timeoutId)
 
         if (!res.ok) return null
         const json = await res.json()
-        if (json.code === 0 && json.data) {
-            const images: string[] = []
-            if (Array.isArray(json.data.images) && json.data.images.length > 0) {
-                for (const img of json.data.images) {
-                    if (typeof img === 'string' && img.startsWith('http')) {
-                        images.push(img)
+        if (json.code !== 0 || !json.data) return null
+
+        const data = json.data
+        const title = data.title || undefined
+        const duration = typeof data.duration === 'number' && data.duration > 0 ? data.duration : undefined
+
+        if (Array.isArray(data.images) && data.images.length > 0) {
+            const photoFiles: string[] = []
+            for (let i = 0; i < data.images.length; i++) {
+                const imgUrl = data.images[i]
+                try {
+                    const c = new AbortController()
+                    const tId = setTimeout(() => c.abort(), 10000)
+                    const imgRes = await fetch(imgUrl, {
+                        headers: { 'User-Agent': USER_AGENT },
+                        signal: c.signal
+                    })
+                    clearTimeout(tId)
+                    if (imgRes.ok) {
+                        const arrayBuf = await imgRes.arrayBuffer()
+                        const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
+                        const photoPath = join(tempDir, photoName)
+                        writeFileSync(photoPath, Buffer.from(arrayBuf))
+                        photoFiles.push(photoName)
+                    }
+                } catch {}
+            }
+
+            if (photoFiles.length > 0) {
+                const filePaths = photoFiles.map((f) => join(tempDir, f))
+                let totalSizeBytes = 0
+                for (const p of filePaths) {
+                    try {
+                        totalSizeBytes += statSync(p).size
+                    } catch {}
+                }
+                return {
+                    mediaType: 'photo',
+                    filePaths,
+                    title,
+                    mediaKey: `tiktok:${data.id || url}`,
+                    fileSizeMB: totalSizeBytes / (1024 * 1024)
+                }
+            }
+        } else {
+            const videoUrl = data.hdplay || data.play || data.wmplay
+            if (videoUrl && typeof videoUrl === 'string') {
+                const c = new AbortController()
+                const tId = setTimeout(() => c.abort(), 20000)
+                const videoRes = await fetch(videoUrl, {
+                    headers: { 'User-Agent': USER_AGENT },
+                    signal: c.signal
+                })
+                clearTimeout(tId)
+
+                if (videoRes.ok) {
+                    const arrayBuf = await videoRes.arrayBuffer()
+                    const videoName = `${filePrefix}.mp4`
+                    const videoPath = join(tempDir, videoName)
+                    writeFileSync(videoPath, Buffer.from(arrayBuf))
+                    const stats = statSync(videoPath)
+                    return {
+                        mediaType: 'video',
+                        filePaths: [videoPath],
+                        title,
+                        mediaKey: `tiktok:${data.id || url}`,
+                        fileSizeMB: stats.size / (1024 * 1024),
+                        duration
                     }
                 }
             }
-            return {
-                images: Array.from(new Set(images)),
-                title: json.data.title || undefined
-            }
         }
     } catch (err) {
-        console.warn('TikWM API fetch failed:', err)
+        console.warn('TikWM API fetch error:', err)
     }
     return null
 }
@@ -255,6 +313,13 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     const filePrefix = `media_${Date.now()}_${Math.floor(Math.random() * 10000)}`
     const outputTemplate = join(tempDir, `${filePrefix}_%(playlist_index|autonumber)02d.%(ext)s`)
 
+    if (platform === 'tiktok') {
+        const directResult = await fetchTikTokApi(url, tempDir, filePrefix)
+        if (directResult) {
+            return directResult
+        }
+    }
+
     const spawnEnv: Record<string, string> = {
         ...(process.env as Record<string, string>),
         PYTHONIOENCODING: 'utf-8',
@@ -267,51 +332,6 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let width: number | undefined = undefined
     let height: number | undefined = undefined
     let duration: number | undefined = undefined
-
-    if (platform === 'tiktok' && /\/photo\//i.test(url)) {
-        const tikwmData = await fetchTikTokPhotoPost(url)
-        if (tikwmData && tikwmData.images.length > 0) {
-            title = tikwmData.title
-            const photoFiles: string[] = []
-            for (let i = 0; i < tikwmData.images.length; i++) {
-                const imgUrl = tikwmData.images[i]
-                try {
-                    const controller = new AbortController()
-                    const timeoutId = setTimeout(() => controller.abort(), 10000)
-                    const res = await fetch(imgUrl, {
-                        headers: { 'User-Agent': USER_AGENT },
-                        signal: controller.signal
-                    })
-                    clearTimeout(timeoutId)
-                    if (res.ok) {
-                        const arrayBuf = await res.arrayBuffer()
-                        const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
-                        const photoPath = join(tempDir, photoName)
-                        writeFileSync(photoPath, Buffer.from(arrayBuf))
-                        photoFiles.push(photoName)
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch TikTok slide image ${imgUrl}:`, e)
-                }
-            }
-            if (photoFiles.length > 0) {
-                const filePaths = photoFiles.map((f) => join(tempDir, f))
-                let totalSizeBytes = 0
-                for (const p of filePaths) {
-                    try {
-                        totalSizeBytes += statSync(p).size
-                    } catch {}
-                }
-                return {
-                    mediaType: 'photo',
-                    filePaths,
-                    title: title || undefined,
-                    mediaKey: `${platform}:${url}`,
-                    fileSizeMB: totalSizeBytes / (1024 * 1024)
-                }
-            }
-        }
-    }
 
     let targetUrl = url
     if (platform === 'tiktok') {
@@ -363,7 +383,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         binPath,
         [
             ...commonArgs,
-            '-f', 'b[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            '-f', 'bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=h264]+bestaudio[acodec^=aac]/best[vcodec^=avc]/best[vcodec^=h264]/b[ext=mp4]/bestvideo+bestaudio/best',
             '--merge-output-format', 'mp4',
             '--ppa', 'Merger+ffmpeg:-movflags +faststart',
             '-o', outputTemplate,
@@ -399,38 +419,9 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let photoFiles = files.filter((f) => photoExtensions.some((ext) => f.toLowerCase().endsWith(ext)))
 
     if (platform === 'tiktok' && videoFiles.length === 0 && photoFiles.length === 0) {
-        const tikwmData = await fetchTikTokPhotoPost(url)
-        if (tikwmData && tikwmData.images.length > 0) {
-            if (!title && tikwmData.title) {
-                title = tikwmData.title
-            }
-            const downloaded: string[] = []
-            for (let i = 0; i < tikwmData.images.length; i++) {
-                const imgUrl = tikwmData.images[i]
-                try {
-                    const controller = new AbortController()
-                    const timeoutId = setTimeout(() => controller.abort(), 10000)
-                    const res = await fetch(imgUrl, {
-                        headers: {
-                            'User-Agent': USER_AGENT
-                        },
-                        signal: controller.signal
-                    })
-                    clearTimeout(timeoutId)
-                    if (res.ok) {
-                        const arrayBuf = await res.arrayBuffer()
-                        const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
-                        const photoPath = join(tempDir, photoName)
-                        writeFileSync(photoPath, Buffer.from(arrayBuf))
-                        downloaded.push(photoName)
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch TikTok slide image ${imgUrl}:`, e)
-                }
-            }
-            if (downloaded.length > 0) {
-                photoFiles = downloaded
-            }
+        const fallbackResult = await fetchTikTokApi(url, tempDir, filePrefix)
+        if (fallbackResult) {
+            return fallbackResult
         }
     }
 
