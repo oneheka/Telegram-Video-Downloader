@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, unlinkSync, statSync, readdirSync, writeFileSync, openSync, readSync, closeSync } from "fs";
 import { getBinPath } from "@/downloader/bin";
 import { spawn } from "child_process";
 import { join } from "path";
@@ -26,6 +26,94 @@ export interface MediaDownloadResult {
     width?: number
     height?: number
     duration?: number
+}
+
+export function parseMp4Metadata(filePath: string): { width: number; height: number; duration?: number } | null {
+    try {
+        const stats = statSync(filePath)
+        const fd = openSync(filePath, 'r')
+        const bufferSize = Math.min(stats.size, 1024 * 1024)
+        const buffer = Buffer.alloc(bufferSize)
+        readSync(fd, buffer, 0, bufferSize, 0)
+        closeSync(fd)
+
+        let timescale = 1000
+        let movieDuration: number | undefined = undefined
+        let trackWidth = 0
+        let trackHeight = 0
+        let isRotated = false
+
+        function parseBoxes(start: number, end: number) {
+            let pos = start
+            while (pos + 8 <= end) {
+                let size = buffer.readUInt32BE(pos)
+                const type = buffer.toString('ascii', pos + 4, pos + 8)
+
+                if (size === 1 && pos + 16 <= end) {
+                    size = Number(buffer.readBigUInt64BE(pos + 8))
+                } else if (size === 0) {
+                    size = end - pos
+                }
+
+                if (size < 8) break
+                const boxEnd = Math.min(pos + size, end)
+                const payloadStart = pos + 8
+
+                if (type === 'moov' || type === 'trak' || type === 'mdia') {
+                    parseBoxes(payloadStart, boxEnd)
+                } else if (type === 'mvhd') {
+                    const version = buffer.readUInt8(payloadStart)
+                    if (version === 0 && payloadStart + 20 <= boxEnd) {
+                        timescale = buffer.readUInt32BE(payloadStart + 12)
+                        const dur = buffer.readUInt32BE(payloadStart + 16)
+                        if (timescale > 0) movieDuration = Math.round(dur / timescale)
+                    } else if (version === 1 && payloadStart + 32 <= boxEnd) {
+                        timescale = buffer.readUInt32BE(payloadStart + 20)
+                        const dur = Number(buffer.readBigUInt64BE(payloadStart + 24))
+                        if (timescale > 0) movieDuration = Math.round(dur / timescale)
+                    }
+                } else if (type === 'tkhd') {
+                    const version = buffer.readUInt8(payloadStart)
+                    const matrixOffset = payloadStart + (version === 0 ? 40 : 52)
+                    if (matrixOffset + 36 + 8 <= boxEnd) {
+                        const b = buffer.readInt32BE(matrixOffset + 4)
+                        const c = buffer.readInt32BE(matrixOffset + 12)
+                        if (b !== 0 || c !== 0) {
+                            isRotated = true
+                        }
+                        const widthOffset = matrixOffset + 36
+                        const w = buffer.readUInt16BE(widthOffset)
+                        const h = buffer.readUInt16BE(widthOffset + 4)
+                        if (w > 0 && h > 0) {
+                            trackWidth = w
+                            trackHeight = h
+                        }
+                    }
+                }
+
+                pos += size
+            }
+        }
+
+        parseBoxes(0, bufferSize)
+
+        if (trackWidth > 0 && trackHeight > 0) {
+            let finalWidth = trackWidth
+            let finalHeight = trackHeight
+            if (isRotated) {
+                finalWidth = trackHeight
+                finalHeight = trackWidth
+            }
+            return {
+                width: finalWidth,
+                height: finalHeight,
+                duration: movieDuration
+            }
+        }
+        return null
+    } catch {
+        return null
+    }
 }
 
 function spawnProcess(binPath: string, args: string[], spawnEnv: Record<string, string>): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -283,13 +371,16 @@ async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string):
                     const videoPath = join(tempDir, videoName)
                     writeFileSync(videoPath, Buffer.from(arrayBuf))
                     const stats = statSync(videoPath)
+                    const mp4Meta = parseMp4Metadata(videoPath)
                     return {
                         mediaType: 'video',
                         filePaths: [videoPath],
                         title,
                         mediaKey: `tiktok:${data.id || url}`,
                         fileSizeMB: stats.size / (1024 * 1024),
-                        duration
+                        width: mp4Meta?.width,
+                        height: mp4Meta?.height,
+                        duration: mp4Meta?.duration || duration
                     }
                 }
             }
@@ -469,6 +560,15 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     const mediaType: MediaType = videoFiles.length > 0 ? 'video' : 'photo'
     const targetFiles = videoFiles.length > 0 ? videoFiles : photoFiles
     const filePaths = targetFiles.map((f) => join(tempDir, f))
+
+    if (mediaType === 'video' && filePaths.length > 0) {
+        const mp4Meta = parseMp4Metadata(filePaths[0])
+        if (mp4Meta) {
+            width = mp4Meta.width
+            height = mp4Meta.height
+            if (mp4Meta.duration) duration = mp4Meta.duration
+        }
+    }
 
     let totalSizeBytes = 0
     for (const p of filePaths) {

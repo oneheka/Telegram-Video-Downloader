@@ -1,4 +1,4 @@
-import { extractSupportedUrl, extractImageUrls } from "@/downloader";
+import { extractSupportedUrl, extractImageUrls, parseMp4Metadata } from "@/downloader";
 import { describe, it as test } from "node:test";
 import { chunkArray } from "@/handlers/downloader";
 import { resolveLanguageCode } from "@/i18n";
@@ -201,5 +201,12 @@ describe('Metadata Image Extraction Helper Test', () => {
         assert.equal(urls[0], 'https://example.com/slide1.jpg')
         assert.equal(urls[1], 'https://example.com/slide2.jpg')
         assert.equal(urls[2], 'https://example.com/slide3.jpg')
+    })
+})
+
+describe('MP4 Binary Metadata Parser Test', () => {
+    test('Returns null for non-existent or invalid file', () => {
+        const res = parseMp4Metadata('non_existent_file.mp4')
+        assert.equal(res, null)
     })
 })
