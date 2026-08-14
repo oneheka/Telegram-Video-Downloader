@@ -1,4 +1,5 @@
 import { getChatSettings, getUserSettings, updateChatSettings, updateUserSettings, setChatLanguage, setUserLanguage } from "@/db";
+import { ALL_REACTIONS } from "@/handlers/reactions";
 import type { CustomContext, SupportedLang } from "@/i18n";
 import { InlineKeyboard } from "grammy";
 
@@ -9,6 +10,7 @@ export async function getMainSettingsKeyboard(ctx: CustomContext): Promise<Inlin
     let showSender = true
     let showDescription = true
     let checkDuplicates = true
+    let enableReactions = true
 
     if (isGroup && ctx.chat) {
         const s = await getChatSettings(ctx.chat.id)
@@ -16,10 +18,12 @@ export async function getMainSettingsKeyboard(ctx: CustomContext): Promise<Inlin
         showSender = s.show_sender
         showDescription = s.show_description
         checkDuplicates = s.check_duplicates
+        enableReactions = s.enable_reactions
     } else if (ctx.from) {
         const s = await getUserSettings(ctx.from.id)
         autoDelete = s.auto_delete_link
         showDescription = s.show_description
+        enableReactions = s.enable_reactions
     }
 
     const kb = new InlineKeyboard()
@@ -34,6 +38,15 @@ export async function getMainSettingsKeyboard(ctx: CustomContext): Promise<Inlin
             `${ctx.t('btn_show_description')} ${showDescription ? ctx.t('status_on') : ctx.t('status_off')}`,
             'toggle:show_description'
         )
+        .row()
+        .text(
+            `${ctx.t('btn_enable_reactions')} ${enableReactions ? ctx.t('status_on') : ctx.t('status_off')}`,
+            'toggle:enable_reactions'
+        )
+
+    if (enableReactions) {
+        kb.row().text(ctx.t('btn_customize_reactions'), 'menu:reactions')
+    }
 
     if (isGroup) {
         kb.row().text(
@@ -64,6 +77,30 @@ export function getLanguageKeyboard(currentLang: SupportedLang, t: (key: string)
         .text(currentLang === 'fr' ? '✅ 🇫🇷 Français' : '🇫🇷 Français', 'set_lang:fr')
         .row()
         .text(t('btn_back'), 'menu:main')
+}
+
+export function getReactionsKeyboard(selectedEmojis: string[], t: (key: string) => string): InlineKeyboard {
+    const kb = new InlineKeyboard()
+    const set = new Set(selectedEmojis)
+
+    let col = 0
+    for (const emoji of ALL_REACTIONS) {
+        const isSelected = set.has(emoji)
+        const label = `${isSelected ? '✅' : '⚪️'} ${emoji}`
+        kb.text(label, `toggle_emoji:${emoji}`)
+        col++
+        if (col >= 4) {
+            kb.row()
+            col = 0
+        }
+    }
+
+    if (col !== 0) {
+        kb.row()
+    }
+
+    kb.text(t('btn_back'), 'menu:main')
+    return kb
 }
 
 export async function handleLanguageCallback(ctx: CustomContext): Promise<void> {
@@ -120,6 +157,73 @@ export async function handleLanguageCallback(ctx: CustomContext): Promise<void> 
         return
     }
 
+    if (callbackData === 'menu:reactions') {
+        await safeAnswer()
+        let reactionButtons = '👍,❤️,🔥,😂,🤡,💩,🤮'
+        if (isGroup && ctx.chat) {
+            const s = await getChatSettings(ctx.chat.id)
+            reactionButtons = s.reaction_buttons
+        } else if (ctx.from) {
+            const s = await getUserSettings(ctx.from.id)
+            reactionButtons = s.reaction_buttons
+        }
+
+        const selected = reactionButtons.split(',').map((e) => e.trim()).filter(Boolean)
+        const text = ctx.t('reactions_menu_title')
+        const keyboard = getReactionsKeyboard(selected, ctx.t)
+        try {
+            await ctx.editMessageText(text, {
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            })
+        } catch {}
+        return
+    }
+
+    if (callbackData.startsWith('toggle_emoji:')) {
+        if (!(await checkAdmin())) return
+
+        const targetEmoji = callbackData.replace('toggle_emoji:', '')
+        let reactionButtons = '👍,❤️,🔥,😂,🤡,💩,🤮'
+        if (isGroup && ctx.chat) {
+            const s = await getChatSettings(ctx.chat.id)
+            reactionButtons = s.reaction_buttons
+        } else if (ctx.from) {
+            const s = await getUserSettings(ctx.from.id)
+            reactionButtons = s.reaction_buttons
+        }
+
+        let selected = reactionButtons.split(',').map((e) => e.trim()).filter(Boolean)
+        if (selected.includes(targetEmoji)) {
+            selected = selected.filter((e) => e !== targetEmoji)
+        } else {
+            selected.push(targetEmoji)
+        }
+
+        const newButtonsString = selected.join(',')
+
+        if (isGroup && ctx.chat) {
+            await updateChatSettings(ctx.chat.id, {
+                reaction_buttons: newButtonsString
+            })
+        } else if (ctx.from) {
+            await updateUserSettings(ctx.from.id, {
+                reaction_buttons: newButtonsString
+            })
+        }
+
+        await safeAnswer()
+        const text = ctx.t('reactions_menu_title')
+        const keyboard = getReactionsKeyboard(selected, ctx.t)
+        try {
+            await ctx.editMessageText(text, {
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            })
+        } catch {}
+        return
+    }
+
     if (callbackData.startsWith('set_lang:')) {
         if (!(await checkAdmin())) return
 
@@ -140,6 +244,33 @@ export async function handleLanguageCallback(ctx: CustomContext): Promise<void> 
 
         const text = `${ctx.t('lang_select')}\n\n${ctx.t('active_lang')}`
         const keyboard = getLanguageKeyboard(targetLang, ctx.t)
+        try {
+            await ctx.editMessageText(text, {
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            })
+        } catch {}
+        return
+    }
+
+    if (callbackData === 'toggle:enable_reactions') {
+        if (!(await checkAdmin())) return
+
+        if (isGroup && ctx.chat) {
+            const s = await getChatSettings(ctx.chat.id)
+            await updateChatSettings(ctx.chat.id, {
+                enable_reactions: !s.enable_reactions
+            })
+        } else if (ctx.from) {
+            const s = await getUserSettings(ctx.from.id)
+            await updateUserSettings(ctx.from.id, {
+                enable_reactions: !s.enable_reactions
+            })
+        }
+
+        await safeAnswer()
+        const text = `${ctx.t('welcome')}\n\n${ctx.t('settings_menu')}`
+        const keyboard = await getMainSettingsKeyboard(ctx)
         try {
             await ctx.editMessageText(text, {
                 parse_mode: 'Markdown',

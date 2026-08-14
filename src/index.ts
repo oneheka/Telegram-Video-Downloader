@@ -1,4 +1,5 @@
 import { handleStart, handleHelp, handleLangCommand } from "@/handlers/commands";
+import { handleReactionCallback } from "@/handlers/reactions";
 import { handleMessageDownloader } from "@/handlers/downloader";
 import { handleLanguageCallback } from "@/handlers/language";
 import { ensureYtDlpBinary } from "@/downloader/bin";
@@ -41,7 +42,16 @@ async function main() {
     bot.command('help', handleHelp)
     bot.command('lang', handleLangCommand)
 
-    bot.on('callback_query:data', handleLanguageCallback)
+    bot.on('callback_query:data', async (ctx, next) => {
+        const data = ctx.callbackQuery?.data
+        if (data?.startsWith('react:')) {
+            await handleReactionCallback(ctx)
+            return
+        }
+        await handleLanguageCallback(ctx)
+        return next()
+    })
+
     bot.use(handleMessageDownloader)
 
     bot.catch((err) => {

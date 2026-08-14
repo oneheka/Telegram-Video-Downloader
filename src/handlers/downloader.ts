@@ -1,5 +1,6 @@
+import { getChatSettings, getUserSettings, checkIsDuplicate, recordMediaHistory, removeMediaHistory, saveMediaMessage } from "@/db";
 import { downloadMedia, extractSupportedUrl, cleanupFiles, SupportedPlatform } from "@/downloader";
-import { getChatSettings, getUserSettings, checkIsDuplicate, recordMediaHistory, removeMediaHistory } from "@/db";
+import { buildReactionKeyboard } from "@/handlers/reactions";
 import type { CustomContext } from "@/i18n";
 import { InputFile } from "grammy";
 
@@ -38,6 +39,8 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
     let showSender = true
     let showDescription = true
     let checkDuplicates = true
+    let enableReactions = true
+    let reactionButtons = '👍,❤️,🔥,😂,🤡,💩,🤮'
 
     if (isGroup && ctx.chat) {
         const s = await getChatSettings(ctx.chat.id)
@@ -45,10 +48,14 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
         showSender = s.show_sender
         showDescription = s.show_description
         checkDuplicates = s.check_duplicates
+        enableReactions = s.enable_reactions
+        reactionButtons = s.reaction_buttons
     } else if (ctx.from) {
         const s = await getUserSettings(ctx.from.id)
         autoDeleteLink = s.auto_delete_link
         showDescription = s.show_description
+        enableReactions = s.enable_reactions
+        reactionButtons = s.reaction_buttons
     }
 
     const pingAuthorName = ctx.from
@@ -216,6 +223,8 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
             extraTextMessage = showDescription && result.title ? `🎥 ${escapeHtml(result.title)}` : undefined
         }
 
+        const reactionKeyboard = enableReactions ? buildReactionKeyboard(reactionButtons, new Map()) : undefined
+
         let sentMainMsg: { message_id: number } | undefined = undefined
 
         if (result.mediaType === 'video') {
@@ -228,6 +237,7 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                     height: result.height,
                     duration: result.duration,
                     supports_streaming: true,
+                    reply_markup: reactionKeyboard,
                     reply_parameters: !autoDeleteLink && ctx.message ? {
                         message_id: ctx.message.message_id
                     } : undefined
@@ -240,7 +250,8 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                         width: result.width,
                         height: result.height,
                         duration: result.duration,
-                        supports_streaming: true
+                        supports_streaming: true,
+                        reply_markup: reactionKeyboard
                     })
                 } catch {
                     sentMainMsg = await ctx.replyWithVideo(new InputFile(videoPath))
@@ -253,6 +264,7 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                     sentMainMsg = await ctx.replyWithPhoto(new InputFile(photoPath), {
                         caption: mediaCaption,
                         parse_mode: 'HTML',
+                        reply_markup: reactionKeyboard,
                         reply_parameters: !autoDeleteLink && ctx.message ? {
                             message_id: ctx.message.message_id
                         } : undefined
@@ -261,7 +273,8 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                     try {
                         sentMainMsg = await ctx.replyWithPhoto(new InputFile(photoPath), {
                             caption: mediaCaption,
-                            parse_mode: 'HTML'
+                            parse_mode: 'HTML',
+                            reply_markup: reactionKeyboard
                         })
                     } catch {
                         sentMainMsg = await ctx.replyWithPhoto(new InputFile(photoPath))
@@ -296,6 +309,10 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                     }
                 }
             }
+        }
+
+        if (ctx.chat && sentMainMsg && mediaCaption) {
+            await saveMediaMessage(ctx.chat.id, sentMainMsg.message_id, mediaCaption)
         }
 
         if (isGroup && checkDuplicates && ctx.chat && ctx.from && sentMainMsg) {
