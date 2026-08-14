@@ -39,8 +39,8 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
     let showSender = true
     let showDescription = true
     let checkDuplicates = true
-    let enableReactions = true
-    let reactionButtons = '👍,❤️,🔥,😂,🤡,💩,🤮'
+    let enableReactions = false
+    let reactionButtons = ''
 
     if (isGroup && ctx.chat) {
         const s = await getChatSettings(ctx.chat.id)

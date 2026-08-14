@@ -5,7 +5,7 @@ import type { Sql } from "postgres";
 import { CONFIG } from "@/config";
 import postgres from "postgres";
 
-export const DEFAULT_REACTIONS = '👍,❤️,🔥,😂,🤡,💩,🤮'
+export const DEFAULT_REACTIONS = ''
 
 export interface ChatSettings {
     language_code: string
@@ -71,8 +71,8 @@ export async function initDb(): Promise<boolean> {
                 language_code VARCHAR(10) NOT NULL DEFAULT 'en',
                 auto_delete_link BOOLEAN NOT NULL DEFAULT TRUE,
                 show_description BOOLEAN NOT NULL DEFAULT TRUE,
-                enable_reactions BOOLEAN NOT NULL DEFAULT TRUE,
-                reaction_buttons VARCHAR(255) NOT NULL DEFAULT '👍,❤️,🔥,😂,🤡,💩,🤮',
+                enable_reactions BOOLEAN NOT NULL DEFAULT FALSE,
+                reaction_buttons VARCHAR(255) NOT NULL DEFAULT '',
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `
@@ -85,8 +85,8 @@ export async function initDb(): Promise<boolean> {
                 show_sender BOOLEAN NOT NULL DEFAULT TRUE,
                 show_description BOOLEAN NOT NULL DEFAULT TRUE,
                 check_duplicates BOOLEAN NOT NULL DEFAULT TRUE,
-                enable_reactions BOOLEAN NOT NULL DEFAULT TRUE,
-                reaction_buttons VARCHAR(255) NOT NULL DEFAULT '👍,❤️,🔥,😂,🤡,💩,🤮',
+                enable_reactions BOOLEAN NOT NULL DEFAULT FALSE,
+                reaction_buttons VARCHAR(255) NOT NULL DEFAULT '',
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `
@@ -127,15 +127,15 @@ export async function initDb(): Promise<boolean> {
 
         await queryClient`ALTER TABLE users ADD COLUMN IF NOT EXISTS auto_delete_link BOOLEAN NOT NULL DEFAULT TRUE;`
         await queryClient`ALTER TABLE users ADD COLUMN IF NOT EXISTS show_description BOOLEAN NOT NULL DEFAULT TRUE;`
-        await queryClient`ALTER TABLE users ADD COLUMN IF NOT EXISTS enable_reactions BOOLEAN NOT NULL DEFAULT TRUE;`
-        await queryClient`ALTER TABLE users ADD COLUMN IF NOT EXISTS reaction_buttons VARCHAR(255) NOT NULL DEFAULT '👍,❤️,🔥,😂,🤡,💩,🤮';`
+        await queryClient`ALTER TABLE users ADD COLUMN IF NOT EXISTS enable_reactions BOOLEAN NOT NULL DEFAULT FALSE;`
+        await queryClient`ALTER TABLE users ADD COLUMN IF NOT EXISTS reaction_buttons VARCHAR(255) NOT NULL DEFAULT '';`
 
         await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS auto_delete_link BOOLEAN NOT NULL DEFAULT TRUE;`
         await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS show_sender BOOLEAN NOT NULL DEFAULT TRUE;`
         await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS show_description BOOLEAN NOT NULL DEFAULT TRUE;`
         await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS check_duplicates BOOLEAN NOT NULL DEFAULT TRUE;`
-        await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS enable_reactions BOOLEAN NOT NULL DEFAULT TRUE;`
-        await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS reaction_buttons VARCHAR(255) NOT NULL DEFAULT '👍,❤️,🔥,😂,🤡,💩,🤮';`
+        await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS enable_reactions BOOLEAN NOT NULL DEFAULT FALSE;`
+        await queryClient`ALTER TABLE chats ADD COLUMN IF NOT EXISTS reaction_buttons VARCHAR(255) NOT NULL DEFAULT '';`
 
         await queryClient`ALTER TABLE media_history ADD COLUMN IF NOT EXISTS author_name VARCHAR(255) NOT NULL DEFAULT '';`
         await queryClient`ALTER TABLE media_history ADD COLUMN IF NOT EXISTS message_id BIGINT;`
@@ -171,7 +171,7 @@ export async function getUserSettings(userId: number): Promise<UserSettings> {
                     language_code: rows[0].languageCode,
                     auto_delete_link: rows[0].autoDeleteLink,
                     show_description: rows[0].showDescription,
-                    enable_reactions: rows[0].enableReactions ?? true,
+                    enable_reactions: rows[0].enableReactions ?? false,
                     reaction_buttons: rows[0].reactionButtons !== null && rows[0].reactionButtons !== undefined ? rows[0].reactionButtons : DEFAULT_REACTIONS
                 }
             }
@@ -184,7 +184,7 @@ export async function getUserSettings(userId: number): Promise<UserSettings> {
         language_code: CONFIG.DEFAULT_LANGUAGE,
         auto_delete_link: true,
         show_description: true,
-        enable_reactions: true,
+        enable_reactions: false,
         reaction_buttons: DEFAULT_REACTIONS
     }
 }
@@ -236,7 +236,7 @@ export async function getChatSettings(chatId: number): Promise<ChatSettings> {
                     show_sender: rows[0].showSender,
                     show_description: rows[0].showDescription,
                     check_duplicates: rows[0].checkDuplicates,
-                    enable_reactions: rows[0].enableReactions ?? true,
+                    enable_reactions: rows[0].enableReactions ?? false,
                     reaction_buttons: rows[0].reactionButtons !== null && rows[0].reactionButtons !== undefined ? rows[0].reactionButtons : DEFAULT_REACTIONS
                 }
             }
@@ -251,7 +251,7 @@ export async function getChatSettings(chatId: number): Promise<ChatSettings> {
         show_sender: true,
         show_description: true,
         check_duplicates: true,
-        enable_reactions: true,
+        enable_reactions: false,
         reaction_buttons: DEFAULT_REACTIONS
     }
 }

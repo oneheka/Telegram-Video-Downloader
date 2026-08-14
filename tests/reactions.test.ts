@@ -12,19 +12,22 @@ describe('Reactions Helper Tests', () => {
         assert.ok(ALL_REACTIONS.includes('🤡'))
     })
 
-    test('buildReactionKeyboard builds keyboard with correct counts', () => {
+    test('buildReactionKeyboard builds keyboard with 5 buttons per row', () => {
         const counts = new Map<string, number>([
             ['👍', 3],
             ['🤡', 1]
         ])
-        const kb = buildReactionKeyboard('👍,❤️,🤡', counts)
+        const kb = buildReactionKeyboard('👍,❤️,🔥,😂,🤡,💩,🤮', counts)
         assert.notEqual(kb, undefined)
         const json = kb!.inline_keyboard
-        assert.equal(json.length, 1)
-        assert.equal(json[0].length, 3)
+        assert.equal(json.length, 2)
+        assert.equal(json[0].length, 5)
+        assert.equal(json[1].length, 2)
         assert.equal(json[0][0].text, '👍 3')
         assert.equal(json[0][1].text, '❤️')
-        assert.equal(json[0][2].text, '🤡 1')
+        assert.equal(json[0][4].text, '🤡 1')
+        assert.equal(json[1][0].text, '💩')
+        assert.equal(json[1][1].text, '🤮')
     })
 
     test('buildReactionKeyboard returns undefined when buttons string is empty', () => {
@@ -79,6 +82,12 @@ describe('Reactions DB Operations Test', () => {
         records = await getMessageReactions(999, 1001)
         assert.equal(records[0].count, 1)
         assert.deepEqual(records[0].users, ['@oneheka'])
+    })
+
+    test('Default user settings have reactions disabled and empty', async () => {
+        const u = await getUserSettings(999999)
+        assert.equal(u.enable_reactions, false)
+        assert.equal(u.reaction_buttons, '')
     })
 
     test('Persists empty reaction buttons without resetting to default', async () => {

@@ -21,7 +21,7 @@ export function buildReactionKeyboard(reactionButtons: string, counts: Map<strin
         const text = count > 0 ? `${emoji} ${count}` : emoji
         kb.text(text, `react:${emoji}`)
         col++
-        if (col >= 4) {
+        if (col >= 5) {
             kb.row()
             col = 0
         }
@@ -81,7 +81,7 @@ export async function handleReactionCallback(ctx: CustomContext): Promise<void> 
     const baseCaption = await getMediaMessage(chatId, messageId)
 
     const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
-    let reactionButtons = '👍,❤️,🔥,😂,🤡,💩,🤮'
+    let reactionButtons = ''
 
     if (isGroup) {
         const s = await getChatSettings(chatId)

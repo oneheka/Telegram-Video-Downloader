@@ -9,10 +9,10 @@ export const users = pgTable('users', {
     }).notNull().default('en'),
     autoDeleteLink: boolean('auto_delete_link').notNull().default(true),
     showDescription: boolean('show_description').notNull().default(true),
-    enableReactions: boolean('enable_reactions').notNull().default(true),
+    enableReactions: boolean('enable_reactions').notNull().default(false),
     reactionButtons: varchar('reaction_buttons', {
         length: 255
-    }).notNull().default('👍,❤️,🔥,😂,🤡,💩,🤮'),
+    }).notNull().default(''),
     updatedAt: timestamp('updated_at', {
         withTimezone: true,
         mode: 'date'
@@ -30,10 +30,10 @@ export const chats = pgTable('chats', {
     showSender: boolean('show_sender').notNull().default(true),
     showDescription: boolean('show_description').notNull().default(true),
     checkDuplicates: boolean('check_duplicates').notNull().default(true),
-    enableReactions: boolean('enable_reactions').notNull().default(true),
+    enableReactions: boolean('enable_reactions').notNull().default(false),
     reactionButtons: varchar('reaction_buttons', {
         length: 255
-    }).notNull().default('👍,❤️,🔥,😂,🤡,💩,🤮'),
+    }).notNull().default(''),
     updatedAt: timestamp('updated_at', {
         withTimezone: true,
         mode: 'date'

@@ -10,7 +10,7 @@ export async function getMainSettingsKeyboard(ctx: CustomContext): Promise<Inlin
     let showSender = true
     let showDescription = true
     let checkDuplicates = true
-    let enableReactions = true
+    let enableReactions = false
 
     if (isGroup && ctx.chat) {
         const s = await getChatSettings(ctx.chat.id)
@@ -89,7 +89,7 @@ export function getReactionsKeyboard(selectedEmojis: string[], t: (key: string) 
         const label = `${isSelected ? '✅' : '⚪️'} ${emoji}`
         kb.text(label, `toggle_emoji:${emoji}`)
         col++
-        if (col >= 4) {
+        if (col >= 5) {
             kb.row()
             col = 0
         }
@@ -159,7 +159,7 @@ export async function handleLanguageCallback(ctx: CustomContext): Promise<void> 
 
     if (callbackData === 'menu:reactions') {
         await safeAnswer()
-        let reactionButtons = '👍,❤️,🔥,😂,🤡,💩,🤮'
+        let reactionButtons = ''
         if (isGroup && ctx.chat) {
             const s = await getChatSettings(ctx.chat.id)
             reactionButtons = s.reaction_buttons
@@ -184,7 +184,7 @@ export async function handleLanguageCallback(ctx: CustomContext): Promise<void> 
         if (!(await checkAdmin())) return
 
         const targetEmoji = callbackData.replace('toggle_emoji:', '')
-        let reactionButtons = '👍,❤️,🔥,😂,🤡,💩,🤮'
+        let reactionButtons = ''
         if (isGroup && ctx.chat) {
             const s = await getChatSettings(ctx.chat.id)
             reactionButtons = s.reaction_buttons
