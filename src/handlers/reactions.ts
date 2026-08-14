@@ -8,8 +8,11 @@ export const ALL_REACTIONS = [
     '💩', '🤮', '👎', '😱', '🤯', '🤬', '💔', '🥱'
 ]
 
-export function buildReactionKeyboard(reactionButtons: string, counts: Map<string, number>): InlineKeyboard {
+export function buildReactionKeyboard(reactionButtons: string, counts: Map<string, number>): InlineKeyboard | undefined {
     const list = reactionButtons.split(',').map((e) => e.trim()).filter(Boolean)
+    if (list.length === 0) {
+        return undefined
+    }
     const kb = new InlineKeyboard()
 
     let col = 0
@@ -103,7 +106,7 @@ export async function handleReactionCallback(ctx: CustomContext): Promise<void> 
                 parse_mode: 'HTML',
                 reply_markup: keyboard
             })
-        } else {
+        } else if (keyboard) {
             await ctx.editMessageReplyMarkup({
                 reply_markup: keyboard
             })

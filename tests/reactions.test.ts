@@ -1,5 +1,5 @@
 import { buildReactionKeyboard, formatReactionsCaption, ALL_REACTIONS } from "@/handlers/reactions";
-import { toggleUserReaction, getMessageReactions, saveMediaMessage, getMediaMessage } from "@/db";
+import { toggleUserReaction, getMessageReactions, saveMediaMessage, getMediaMessage, updateUserSettings, getUserSettings, updateChatSettings, getChatSettings } from "@/db";
 import { describe, it as test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -18,12 +18,19 @@ describe('Reactions Helper Tests', () => {
             ['🤡', 1]
         ])
         const kb = buildReactionKeyboard('👍,❤️,🤡', counts)
-        const json = kb.inline_keyboard
+        assert.notEqual(kb, undefined)
+        const json = kb!.inline_keyboard
         assert.equal(json.length, 1)
         assert.equal(json[0].length, 3)
         assert.equal(json[0][0].text, '👍 3')
         assert.equal(json[0][1].text, '❤️')
         assert.equal(json[0][2].text, '🤡 1')
+    })
+
+    test('buildReactionKeyboard returns undefined when buttons string is empty', () => {
+        const counts = new Map<string, number>()
+        const kb = buildReactionKeyboard('', counts)
+        assert.equal(kb, undefined)
     })
 
     test('formatReactionsCaption formats active reactions correctly', () => {
@@ -72,5 +79,19 @@ describe('Reactions DB Operations Test', () => {
         records = await getMessageReactions(999, 1001)
         assert.equal(records[0].count, 1)
         assert.deepEqual(records[0].users, ['@oneheka'])
+    })
+
+    test('Persists empty reaction buttons without resetting to default', async () => {
+        await updateUserSettings(77777, {
+            reaction_buttons: ''
+        })
+        const u = await getUserSettings(77777)
+        assert.equal(u.reaction_buttons, '')
+
+        await updateChatSettings(88888, {
+            reaction_buttons: ''
+        })
+        const c = await getChatSettings(88888)
+        assert.equal(c.reaction_buttons, '')
     })
 })

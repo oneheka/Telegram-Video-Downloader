@@ -172,7 +172,7 @@ export async function getUserSettings(userId: number): Promise<UserSettings> {
                     auto_delete_link: rows[0].autoDeleteLink,
                     show_description: rows[0].showDescription,
                     enable_reactions: rows[0].enableReactions ?? true,
-                    reaction_buttons: rows[0].reactionButtons || DEFAULT_REACTIONS
+                    reaction_buttons: rows[0].reactionButtons !== null && rows[0].reactionButtons !== undefined ? rows[0].reactionButtons : DEFAULT_REACTIONS
                 }
             }
         } catch (error) {
@@ -237,7 +237,7 @@ export async function getChatSettings(chatId: number): Promise<ChatSettings> {
                     show_description: rows[0].showDescription,
                     check_duplicates: rows[0].checkDuplicates,
                     enable_reactions: rows[0].enableReactions ?? true,
-                    reaction_buttons: rows[0].reactionButtons || DEFAULT_REACTIONS
+                    reaction_buttons: rows[0].reactionButtons !== null && rows[0].reactionButtons !== undefined ? rows[0].reactionButtons : DEFAULT_REACTIONS
                 }
             }
         } catch (error) {
