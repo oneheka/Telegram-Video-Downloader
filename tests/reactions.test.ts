@@ -4,12 +4,13 @@ import { describe, it as test } from "node:test";
 import assert from "node:assert/strict";
 
 describe('Reactions Helper Tests', () => {
-    test('Contains 24 reactions in ALL_REACTIONS pool', () => {
-        assert.equal(ALL_REACTIONS.length, 24)
+    test('Contains 25 reactions in ALL_REACTIONS pool', () => {
+        assert.equal(ALL_REACTIONS.length, 25)
         assert.ok(ALL_REACTIONS.includes('👍'))
         assert.ok(ALL_REACTIONS.includes('💩'))
         assert.ok(ALL_REACTIONS.includes('🤮'))
         assert.ok(ALL_REACTIONS.includes('🤡'))
+        assert.ok(ALL_REACTIONS.includes('🫪'))
     })
 
     test('buildReactionKeyboard builds keyboard with 5 buttons per row', () => {
