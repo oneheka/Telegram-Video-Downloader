@@ -422,7 +422,9 @@ export async function handleCustomEmojisInput(ctx: CustomContext, next: () => Pr
             const member = await ctx.getChatMember(ctx.from.id)
             const isAdmin = ['administrator', 'creator'].includes(member.status)
             if (!isAdmin) {
-                await ctx.reply(ctx.t('error_admin_only'))
+                await ctx.reply(ctx.t('error_admin_only'), {
+                    parse_mode: 'Markdown'
+                })
                 return
             }
         } catch {}
@@ -431,14 +433,20 @@ export async function handleCustomEmojisInput(ctx: CustomContext, next: () => Pr
     const res = parseAndValidateCustomEmojis(text, 20)
     if (!res.valid) {
         if (res.error === 'empty') {
-            await ctx.reply(ctx.t('error_custom_emojis_empty'))
+            await ctx.reply(ctx.t('error_custom_emojis_empty'), {
+                parse_mode: 'Markdown'
+            })
             return
         }
         if (res.error === 'too_many') {
-            await ctx.reply(ctx.t('error_custom_emojis_too_many'))
+            await ctx.reply(ctx.t('error_custom_emojis_too_many'), {
+                parse_mode: 'Markdown'
+            })
             return
         }
-        await ctx.reply(ctx.t('error_custom_emojis_invalid'))
+        await ctx.reply(ctx.t('error_custom_emojis_invalid'), {
+            parse_mode: 'Markdown'
+        })
         return
     }
 

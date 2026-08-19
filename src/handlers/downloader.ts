@@ -134,7 +134,9 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
             if (statusMsg) {
                 await ctx.api.editMessageText(ctx.chat!.id, statusMsg.message_id, ctx.t('error_too_large'))
             } else {
-                await ctx.reply(ctx.t('error_too_large'))
+                await ctx.reply(ctx.t('error_too_large'), {
+                    parse_mode: 'Markdown'
+                })
             }
             return
         }
@@ -347,7 +349,9 @@ export async function handleMessageDownloader(ctx: CustomContext, next: () => Pr
                 await ctx.api.editMessageText(ctx.chat!.id, statusMsg.message_id, ctx.t('error_download'))
             } catch {}
         } else {
-            await ctx.reply(ctx.t('error_download'))
+            await ctx.reply(ctx.t('error_download'), {
+                parse_mode: 'Markdown'
+            })
         }
     } finally {
         if (downloadedFilePaths.length > 0) {
