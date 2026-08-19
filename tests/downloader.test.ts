@@ -83,6 +83,26 @@ describe('Downloader Link Extraction Test', () => {
         assert.equal(res?.url, 'https://pin.it/abc1234')
     })
 
+    test('Detects Threads post and share links', () => {
+        const text1 = 'Check post https://www.threads.net/@thatchriscarley/post/DcJ3GXyCRqu?xmt=AQG0'
+        const res1 = extractSupportedUrl(text1)
+        assert.notEqual(res1, null)
+        assert.equal(res1?.platform, 'threads')
+        assert.equal(res1?.url, 'https://www.threads.net/@thatchriscarley/post/DcJ3GXyCRqu?xmt=AQG0')
+
+        const text2 = 'Check short https://www.threads.net/t/DcJ3GXyCRqu'
+        const res2 = extractSupportedUrl(text2)
+        assert.notEqual(res2, null)
+        assert.equal(res2?.platform, 'threads')
+        assert.equal(res2?.url, 'https://www.threads.net/t/DcJ3GXyCRqu')
+
+        const text3 = 'Check share https://www.threads.com/share/_nEl05Ykn/'
+        const res3 = extractSupportedUrl(text3)
+        assert.notEqual(res3, null)
+        assert.equal(res3?.platform, 'threads')
+        assert.equal(res3?.url, 'https://www.threads.com/share/_nEl05Ykn/')
+    })
+
     test('Ignores non-video link', () => {
         const text = 'Hello world https://google.com'
         const res = extractSupportedUrl(text)

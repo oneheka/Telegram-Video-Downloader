@@ -11,10 +11,11 @@ const TWITTER_X_REGEX = /https?:\/\/(?:www\.|mobile\.)?(?:twitter\.com|x\.com)\/
 const VK_REGEX = /https?:\/\/(?:www\.|m\.)?(?:vk\.com|vk\.ru)\/(?:clip|video|wall)[-?\d_]+\/?(?:\?[^\s]*)?/i
 const REDDIT_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com\/r\/[\w.-]+\/comments\/\w+(?:\/[\w.-]*)?|[vi]\.redd\.it\/\w+)\/?(?:\?[^\s]*)?/i
 const PINTEREST_REGEX = /https?:\/\/(?:www\.)?(?:pinterest\.[a-z.]+\/pin\/\d+|pin\.it\/[\w-]+)\/?(?:\?[^\s]*)?/i
+const THREADS_REGEX = /https?:\/\/(?:www\.)?(?:threads\.net|threads\.com)\/(?:@[\w.-]+\/post\/[\w-]+|t\/[\w-]+|post\/[\w-]+|share\/[\w-]+)\/?(?:\?[^\s]*)?/i
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
-export type SupportedPlatform = 'instagram' | 'tiktok' | 'youtube' | 'twitter' | 'vk' | 'reddit' | 'pinterest'
+export type SupportedPlatform = 'instagram' | 'tiktok' | 'youtube' | 'twitter' | 'vk' | 'reddit' | 'pinterest' | 'threads'
 export type MediaType = 'video' | 'photo'
 
 export interface MediaDownloadResult {
@@ -196,6 +197,12 @@ export function extractSupportedUrl(text: string): { url: string; platform: Supp
     if (pinMatch) return {
         url: pinMatch[0],
         platform: 'pinterest'
+    }
+
+    const threadsMatch = text.match(THREADS_REGEX)
+    if (threadsMatch) return {
+        url: threadsMatch[0],
+        platform: 'threads'
     }
 
     return null
@@ -427,6 +434,9 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
     let targetUrl = url
     if (platform === 'tiktok') {
         targetUrl = targetUrl.replace(/\/photo\//i, '/video/')
+    }
+    if (platform === 'threads') {
+        targetUrl = targetUrl.replace('threads.com', 'threads.net')
     }
 
     const commonArgs = [
