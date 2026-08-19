@@ -398,6 +398,122 @@ async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string):
     return null
 }
 
+async function resolveRedirectUrl(url: string): Promise<string> {
+    try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
+        const response = await fetch(url, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: {
+                'User-Agent': USER_AGENT,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+        if (response.url && response.url !== url) {
+            return response.url
+        }
+    } catch {}
+    return url
+}
+
+async function fetchThreadsDirect(url: string, tempDir: string, filePrefix: string): Promise<MediaDownloadResult | null> {
+    try {
+        let targetUrl = url
+        if (targetUrl.includes('/share/')) {
+            targetUrl = await resolveRedirectUrl(targetUrl)
+        }
+        targetUrl = targetUrl.replace('threads.com', 'threads.net')
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 15000)
+        const res = await fetch(targetUrl, {
+            headers: {
+                'User-Agent': USER_AGENT,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'sec-fetch-dest': 'document',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-site': 'none'
+            },
+            signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+        const html = await res.text()
+
+        const mp4Matches = html.match(/https?:\\?\/\\?\/[^"'\s<>]+\.mp4[^"'\s<>]*/g) || html.match(/https?:\/\/[^"'\s<>]+\.mp4[^"'\s<>]*/g)
+        if (mp4Matches && mp4Matches.length > 0) {
+            const cleanVideoUrl = mp4Matches[0].replace(/\\/g, '').replace(/&amp;/g, '&')
+            const vController = new AbortController()
+            const vTimeout = setTimeout(() => vController.abort(), 20000)
+            const videoRes = await fetch(cleanVideoUrl, {
+                headers: {
+                    'User-Agent': USER_AGENT
+                },
+                signal: vController.signal
+            })
+            clearTimeout(vTimeout)
+            if (videoRes.ok) {
+                const arrayBuffer = await videoRes.arrayBuffer()
+                const buffer = Buffer.from(arrayBuffer)
+                const filePath = join(tempDir, `${filePrefix}_01.mp4`)
+                writeFileSync(filePath, buffer)
+                const stats = statSync(filePath)
+                const mp4Meta = parseMp4Metadata(filePath)
+
+                const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/i)?.[1]
+                const ogDesc = html.match(/<meta property="og:description" content="([^"]+)"/i)?.[1]
+                const title = ogTitle || ogDesc
+
+                return {
+                    mediaType: 'video',
+                    filePaths: [filePath],
+                    title,
+                    mediaKey: url,
+                    fileSizeMB: stats.size / (1024 * 1024),
+                    width: mp4Meta?.width,
+                    height: mp4Meta?.height,
+                    duration: mp4Meta?.duration
+                }
+            }
+        }
+
+        const ogImage = html.match(/<meta property="og:image" content="([^"]+)"/i)?.[1] ||
+            html.match(/<meta content="([^"]+)" property="og:image"/i)?.[1]
+        if (ogImage) {
+            const cleanImageUrl = ogImage.replace(/&amp;/g, '&')
+            const imgController = new AbortController()
+            const imgTimeout = setTimeout(() => imgController.abort(), 10000)
+            const imgRes = await fetch(cleanImageUrl, {
+                headers: {
+                    'User-Agent': USER_AGENT
+                },
+                signal: imgController.signal
+            })
+            clearTimeout(imgTimeout)
+            if (imgRes.ok) {
+                const arrayBuffer = await imgRes.arrayBuffer()
+                const buffer = Buffer.from(arrayBuffer)
+                const filePath = join(tempDir, `${filePrefix}_01.jpg`)
+                writeFileSync(filePath, buffer)
+                const stats = statSync(filePath)
+
+                return {
+                    mediaType: 'photo',
+                    filePaths: [filePath],
+                    mediaKey: url,
+                    fileSizeMB: stats.size / (1024 * 1024)
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('Direct Threads extraction error:', err)
+    }
+    return null
+}
+
 export async function downloadMedia(url: string, platform: SupportedPlatform): Promise<MediaDownloadResult> {
     const binPath = getBinPath()
     const tempDir = join(tmpdir(), 'telegram_dwbot')
@@ -436,7 +552,13 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         targetUrl = targetUrl.replace(/\/photo\//i, '/video/')
     }
     if (platform === 'threads') {
+        if (targetUrl.includes('/share/')) {
+            targetUrl = await resolveRedirectUrl(targetUrl)
+        }
         targetUrl = targetUrl.replace('threads.com', 'threads.net')
+        if (targetUrl.includes('/post/') || targetUrl.includes('/t/')) {
+            targetUrl = targetUrl.split('?')[0]
+        }
     }
 
     const commonArgs = [
@@ -523,6 +645,13 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         const fallbackResult = await fetchTikTokApi(url, tempDir, filePrefix)
         if (fallbackResult) {
             return fallbackResult
+        }
+    }
+
+    if (platform === 'threads' && videoFiles.length === 0 && photoFiles.length === 0) {
+        const fallbackThreads = await fetchThreadsDirect(url, tempDir, filePrefix)
+        if (fallbackThreads) {
+            return fallbackThreads
         }
     }
 
