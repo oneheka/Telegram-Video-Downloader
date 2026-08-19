@@ -1,5 +1,6 @@
-import { buildReactionKeyboard, formatReactionsCaption, parseAndValidateCustomEmojis, ALL_REACTIONS } from "@/handlers/reactions";
 import { toggleUserReaction, getMessageReactions, saveMediaMessage, getMediaMessage, updateUserSettings, getUserSettings, updateChatSettings, getChatSettings } from "@/db";
+import { buildReactionKeyboard, formatReactionsCaption, parseAndValidateCustomEmojis, ALL_REACTIONS } from "@/handlers/reactions";
+import { getReactionsKeyboard } from "@/handlers/language";
 import { describe, it as test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -34,6 +35,21 @@ describe('Reactions Helper Tests', () => {
         const counts = new Map<string, number>()
         const kb = buildReactionKeyboard('', counts)
         assert.equal(kb, undefined)
+    })
+
+    test('getReactionsKeyboard formats buttons with style success for selected items', () => {
+        const selected = ['👍', '🔥']
+        const kb = getReactionsKeyboard(selected, (k) => k)
+        const json = kb.inline_keyboard
+
+        assert.equal(json[0][0].text, '👍')
+        assert.equal((json[0][0] as any).style, 'success')
+
+        assert.equal(json[0][1].text, '❤️')
+        assert.equal((json[0][1] as any).style, undefined)
+
+        assert.equal(json[0][2].text, '🔥')
+        assert.equal((json[0][2] as any).style, 'success')
     })
 
     test('formatReactionsCaption formats active reactions correctly', () => {

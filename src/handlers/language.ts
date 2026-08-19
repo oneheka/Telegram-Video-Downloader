@@ -86,8 +86,11 @@ export function getReactionsKeyboard(selectedEmojis: string[], t: (key: string) 
     let col = 0
     for (const emoji of ALL_REACTIONS) {
         const isSelected = set.has(emoji)
-        const label = `${isSelected ? '✅' : '⚪️'} ${emoji}`
-        kb.text(label, `toggle_emoji:${emoji}`)
+        kb.add({
+            text: emoji,
+            callback_data: `toggle_emoji:${emoji}`,
+            ...(isSelected ? { style: 'success' } : {})
+        } as any)
         col++
         if (col >= 4) {
             kb.row()
