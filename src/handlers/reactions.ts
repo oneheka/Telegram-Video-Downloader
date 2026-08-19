@@ -80,7 +80,7 @@ export function buildReactionKeyboard(reactionButtons: string, counts: Map<strin
         const text = count > 0 ? `${emoji} ${count}` : emoji
         kb.text(text, `react:${emoji}`)
         col++
-        if (col >= 4) {
+        if (col >= 5) {
             kb.row()
             col = 0
         }
