@@ -139,15 +139,32 @@ export async function handleReactionCallback(ctx: CustomContext): Promise<void> 
     const records = await getMessageReactions(chatId, messageId)
     const baseCaption = await getMediaMessage(chatId, messageId)
 
-    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
-    let reactionButtons = ''
+    let buttonEmojis: string[] = []
+    const existingRows = ctx.callbackQuery.message?.reply_markup?.inline_keyboard
+    if (existingRows && existingRows.length > 0) {
+        for (const row of existingRows) {
+            for (const btn of row) {
+                if ('callback_data' in btn && btn.callback_data?.startsWith('react:')) {
+                    const e = btn.callback_data.replace('react:', '')
+                    if (e && !buttonEmojis.includes(e)) {
+                        buttonEmojis.push(e)
+                    }
+                }
+            }
+        }
+    }
 
-    if (isGroup) {
-        const s = await getChatSettings(chatId)
-        reactionButtons = s.reaction_buttons
-    } else {
-        const s = await getUserSettings(userId)
-        reactionButtons = s.reaction_buttons
+    if (buttonEmojis.length === 0) {
+        const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+        let reactionButtons = ''
+        if (isGroup) {
+            const s = await getChatSettings(chatId)
+            reactionButtons = s.reaction_buttons
+        } else {
+            const s = await getUserSettings(userId)
+            reactionButtons = s.reaction_buttons
+        }
+        buttonEmojis = reactionButtons.split(',').map((e) => e.trim()).filter(Boolean)
     }
 
     const counts = new Map<string, number>()
@@ -155,7 +172,7 @@ export async function handleReactionCallback(ctx: CustomContext): Promise<void> 
         counts.set(r.emoji, r.count)
     }
 
-    const keyboard = buildReactionKeyboard(reactionButtons, counts)
+    const keyboard = buildReactionKeyboard(buttonEmojis.join(','), counts)
     const newCaption = baseCaption ? formatReactionsCaption(baseCaption, records) : undefined
 
     try {
