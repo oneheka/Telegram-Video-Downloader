@@ -1,7 +1,7 @@
+import { handleLanguageCallback, handleCustomEmojisInput } from "@/handlers/language";
 import { handleStart, handleHelp, handleLangCommand } from "@/handlers/commands";
 import { handleReactionCallback } from "@/handlers/reactions";
 import { handleMessageDownloader } from "@/handlers/downloader";
-import { handleLanguageCallback } from "@/handlers/language";
 import { ensureYtDlpBinary } from "@/downloader/bin";
 import type { CustomContext } from "@/i18n";
 import { i18nMiddleware } from "@/i18n";
@@ -52,6 +52,7 @@ async function main() {
         return next()
     })
 
+    bot.use(handleCustomEmojisInput)
     bot.use(handleMessageDownloader)
 
     bot.catch((err) => {

@@ -1,4 +1,4 @@
-import { buildReactionKeyboard, formatReactionsCaption, ALL_REACTIONS } from "@/handlers/reactions";
+import { buildReactionKeyboard, formatReactionsCaption, parseAndValidateCustomEmojis, ALL_REACTIONS } from "@/handlers/reactions";
 import { toggleUserReaction, getMessageReactions, saveMediaMessage, getMediaMessage, updateUserSettings, getUserSettings, updateChatSettings, getChatSettings } from "@/db";
 import { describe, it as test } from "node:test";
 import assert from "node:assert/strict";
@@ -51,6 +51,65 @@ describe('Reactions Helper Tests', () => {
         const base = '@bot | <a href="https://example.com">Open</a>'
         const formatted = formatReactionsCaption(base, [])
         assert.equal(formatted, base)
+    })
+})
+
+describe('Custom Emojis Validation Tests', () => {
+    test('Validates space-separated and consecutive emojis correctly', () => {
+        const res1 = parseAndValidateCustomEmojis('👍 🔥 🤡 💩 🚀 ⚡️ 🍕', 20)
+        assert.equal(res1.valid, true)
+        assert.equal(res1.emojis.length, 7)
+        assert.deepEqual(res1.emojis, ['👍', '🔥', '🤡', '💩', '🚀', '⚡️', '🍕'])
+
+        const res2 = parseAndValidateCustomEmojis('👍🔥🤡', 20)
+        assert.equal(res2.valid, true)
+        assert.deepEqual(res2.emojis, ['👍', '🔥', '🤡'])
+
+        const res3 = parseAndValidateCustomEmojis('👍, 🔥, 🤡', 20)
+        assert.equal(res3.valid, true)
+        assert.deepEqual(res3.emojis, ['👍', '🔥', '🤡'])
+    })
+
+    test('Validates complex and special emojis (ZWJ, skin tone, finger heart)', () => {
+        const res = parseAndValidateCustomEmojis('❤️‍🔥 👍🏽 👨‍👩‍👧 🫪', 20)
+        assert.equal(res.valid, true)
+        assert.equal(res.emojis.length, 4)
+    })
+
+    test('Rejects input containing letters, words, links, or numbers', () => {
+        const res1 = parseAndValidateCustomEmojis('👍 привет 🔥', 20)
+        assert.equal(res1.valid, false)
+        assert.equal(res1.error, 'invalid_char')
+
+        const res2 = parseAndValidateCustomEmojis('https://example.com', 20)
+        assert.equal(res2.valid, false)
+        assert.equal(res2.error, 'invalid_char')
+
+        const res3 = parseAndValidateCustomEmojis('12345', 20)
+        assert.equal(res3.valid, false)
+        assert.equal(res3.error, 'invalid_char')
+    })
+
+    test('Rejects empty or whitespace-only input', () => {
+        const res1 = parseAndValidateCustomEmojis('   ', 20)
+        assert.equal(res1.valid, false)
+        assert.equal(res1.error, 'empty')
+
+        const res2 = parseAndValidateCustomEmojis(', ; |', 20)
+        assert.equal(res2.valid, false)
+        assert.equal(res2.error, 'empty')
+    })
+
+    test('Enforces maximum count limit of 20 emojis', () => {
+        const twentyOne = '1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣ 6️⃣ 7️⃣ 8️⃣ 9️⃣ 🔟 👍 👎 ❤️ 🔥 😂 🤡 💩 🤮 😱 🤯 ⚡️'
+        const res = parseAndValidateCustomEmojis(twentyOne, 20)
+        assert.equal(res.valid, false)
+        assert.equal(res.error, 'too_many')
+
+        const twenty = '1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣ 6️⃣ 7️⃣ 8️⃣ 9️⃣ 🔟 👍 👎 ❤️ 🔥 😂 🤡 💩 🤮 😱 🤯'
+        const resValid = parseAndValidateCustomEmojis(twenty, 20)
+        assert.equal(resValid.valid, true)
+        assert.equal(resValid.emojis.length, 20)
     })
 })
 

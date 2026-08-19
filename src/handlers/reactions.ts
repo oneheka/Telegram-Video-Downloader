@@ -8,8 +8,68 @@ export const ALL_REACTIONS = [
     '💩', '🤮', '👎', '😱', '🤯', '🤬', '💔', '🥱'
 ]
 
+export interface EmojiValidationResult {
+    valid: boolean
+    emojis: string[]
+    error?: 'empty' | 'invalid_char' | 'too_many'
+}
+
+const EMOJI_REGEX = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Regional_Indicator}{2}|[#*0-9]\uFE0F?\u20E3)(?:[\uFE0E\uFE0F\u{1F3FB}-\u{1F3FF}]|\u200D(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Regional_Indicator}{2}))*$/u
+
+export function parseAndValidateCustomEmojis(input: string, maxCount = 20): EmojiValidationResult {
+    const trimmed = input.trim()
+    if (!trimmed) {
+        return {
+            valid: false,
+            emojis: [],
+            error: 'empty'
+        }
+    }
+
+    const segmenter = new Intl.Segmenter('en', {
+        granularity: 'grapheme'
+    })
+    const rawGraphemes = Array.from(segmenter.segment(trimmed)).map((s) => s.segment.trim()).filter(Boolean)
+    const tokens = rawGraphemes.filter((g) => !/^[,\s;\-|/]+$/.test(g))
+
+    if (tokens.length === 0) {
+        return {
+            valid: false,
+            emojis: [],
+            error: 'empty'
+        }
+    }
+
+    const emojis: string[] = []
+    for (const token of tokens) {
+        if (!EMOJI_REGEX.test(token)) {
+            return {
+                valid: false,
+                emojis: [],
+                error: 'invalid_char'
+            }
+        }
+        if (!emojis.includes(token)) {
+            emojis.push(token)
+        }
+    }
+
+    if (emojis.length > maxCount) {
+        return {
+            valid: false,
+            emojis: [],
+            error: 'too_many'
+        }
+    }
+
+    return {
+        valid: true,
+        emojis
+    }
+}
+
 export function buildReactionKeyboard(reactionButtons: string, counts: Map<string, number>): InlineKeyboard | undefined {
-    const list = reactionButtons.split(',').map((e) => e.trim()).filter(Boolean)
+    const list = reactionButtons.split(',').map((e) => e.trim()).filter(Boolean).slice(0, 20)
     if (list.length === 0) {
         return undefined
     }

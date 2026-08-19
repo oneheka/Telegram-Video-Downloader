@@ -1,5 +1,5 @@
 import { getChatSettings, getUserSettings, updateChatSettings, updateUserSettings, setChatLanguage, setUserLanguage } from "@/db";
-import { ALL_REACTIONS } from "@/handlers/reactions";
+import { ALL_REACTIONS, parseAndValidateCustomEmojis, buildReactionKeyboard } from "@/handlers/reactions";
 import type { CustomContext, SupportedLang } from "@/i18n";
 import { InlineKeyboard } from "grammy";
 
@@ -99,7 +99,7 @@ export function getReactionsKeyboard(selectedEmojis: string[], t: (key: string) 
         kb.row()
     }
 
-    kb.text(t('btn_back'), 'menu:main')
+    kb.text(t('btn_custom_emoji_input'), 'action:custom_emojis').row().text(t('btn_back'), 'menu:main')
     return kb
 }
 
@@ -175,6 +175,22 @@ export async function handleLanguageCallback(ctx: CustomContext): Promise<void> 
             await ctx.editMessageText(text, {
                 parse_mode: 'Markdown',
                 reply_markup: keyboard
+            })
+        } catch {}
+        return
+    }
+
+    if (callbackData === 'action:custom_emojis') {
+        if (!(await checkAdmin())) return
+
+        await safeAnswer()
+        try {
+            await ctx.reply(ctx.t('prompt_custom_emojis'), {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    force_reply: true,
+                    input_field_placeholder: '👍 🔥 🤡 💩 🚀 ⚡️ 🍕'
+                }
             })
         } catch {}
         return
@@ -377,4 +393,74 @@ export async function handleLanguageCallback(ctx: CustomContext): Promise<void> 
         } catch {}
         return
     }
+}
+
+export async function handleCustomEmojisInput(ctx: CustomContext, next: () => Promise<void>): Promise<void> {
+    const text = ctx.message?.text
+    const replyTo = ctx.message?.reply_to_message
+
+    if (!text || !replyTo || replyTo.from?.id !== ctx.me?.id) {
+        return next()
+    }
+
+    const replyText = replyTo.text || ''
+    const isEmojiPrompt = replyText.includes('эмодзи') ||
+        replyText.includes('emoji') ||
+        replyText.includes('Emoji') ||
+        replyText.includes('이모지') ||
+        replyText.includes('表情') ||
+        replyText.includes('émoji') ||
+        replyText.includes('رموز')
+
+    if (!isEmojiPrompt) {
+        return next()
+    }
+
+    const isGroup = ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')
+    if (isGroup && ctx.from) {
+        try {
+            const member = await ctx.getChatMember(ctx.from.id)
+            const isAdmin = ['administrator', 'creator'].includes(member.status)
+            if (!isAdmin) {
+                await ctx.reply(ctx.t('error_admin_only'))
+                return
+            }
+        } catch {}
+    }
+
+    const res = parseAndValidateCustomEmojis(text, 20)
+    if (!res.valid) {
+        if (res.error === 'empty') {
+            await ctx.reply(ctx.t('error_custom_emojis_empty'))
+            return
+        }
+        if (res.error === 'too_many') {
+            await ctx.reply(ctx.t('error_custom_emojis_too_many'))
+            return
+        }
+        await ctx.reply(ctx.t('error_custom_emojis_invalid'))
+        return
+    }
+
+    const newButtonsString = res.emojis.join(',')
+
+    if (isGroup && ctx.chat) {
+        await updateChatSettings(ctx.chat.id, {
+            enable_reactions: true,
+            reaction_buttons: newButtonsString
+        })
+    } else if (ctx.from) {
+        await updateUserSettings(ctx.from.id, {
+            enable_reactions: true,
+            reaction_buttons: newButtonsString
+        })
+    }
+
+    const previewKeyboard = buildReactionKeyboard(newButtonsString, new Map())
+    const returnKeyboard = new InlineKeyboard().text(ctx.t('btn_back'), 'menu:reactions')
+
+    await ctx.reply(ctx.t('custom_emojis_saved'), {
+        parse_mode: 'Markdown',
+        reply_markup: previewKeyboard || returnKeyboard
+    })
 }
