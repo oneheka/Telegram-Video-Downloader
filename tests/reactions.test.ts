@@ -4,16 +4,15 @@ import { describe, it as test } from "node:test";
 import assert from "node:assert/strict";
 
 describe('Reactions Helper Tests', () => {
-    test('Contains 25 reactions in ALL_REACTIONS pool', () => {
-        assert.equal(ALL_REACTIONS.length, 25)
+    test('Contains 8 reactions in ALL_REACTIONS pool', () => {
+        assert.equal(ALL_REACTIONS.length, 8)
         assert.ok(ALL_REACTIONS.includes('👍'))
         assert.ok(ALL_REACTIONS.includes('💩'))
         assert.ok(ALL_REACTIONS.includes('🤮'))
         assert.ok(ALL_REACTIONS.includes('🤡'))
-        assert.ok(ALL_REACTIONS.includes('🫪'))
     })
 
-    test('buildReactionKeyboard builds keyboard with 5 buttons per row', () => {
+    test('buildReactionKeyboard builds keyboard with 4 buttons per row', () => {
         const counts = new Map<string, number>([
             ['👍', 3],
             ['🤡', 1]
@@ -22,13 +21,13 @@ describe('Reactions Helper Tests', () => {
         assert.notEqual(kb, undefined)
         const json = kb!.inline_keyboard
         assert.equal(json.length, 2)
-        assert.equal(json[0].length, 5)
-        assert.equal(json[1].length, 2)
+        assert.equal(json[0].length, 4)
+        assert.equal(json[1].length, 3)
         assert.equal(json[0][0].text, '👍 3')
         assert.equal(json[0][1].text, '❤️')
-        assert.equal(json[0][4].text, '🤡 1')
-        assert.equal(json[1][0].text, '💩')
-        assert.equal(json[1][1].text, '🤮')
+        assert.equal(json[1][0].text, '🤡 1')
+        assert.equal(json[1][1].text, '💩')
+        assert.equal(json[1][2].text, '🤮')
     })
 
     test('buildReactionKeyboard returns undefined when buttons string is empty', () => {

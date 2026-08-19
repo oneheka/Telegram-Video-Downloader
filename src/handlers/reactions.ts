@@ -3,9 +3,8 @@ import type { CustomContext } from "@/i18n";
 import { InlineKeyboard } from "grammy";
 
 export const ALL_REACTIONS = [
-    '👍', '❤️', '🔥', '👏', '😍', '⚡️', '🎉', '👑', '🫡',
-    '😂', '🤡', '💀', '🗿', '💅', '👀', '🤝', '🫪',
-    '💩', '🤮', '👎', '😱', '🤯', '🤬', '💔', '🥱'
+    '👍', '❤️', '🔥', '😂',
+    '🤡', '💩', '🤮', '👎'
 ]
 
 export interface EmojiValidationResult {
@@ -81,7 +80,7 @@ export function buildReactionKeyboard(reactionButtons: string, counts: Map<strin
         const text = count > 0 ? `${emoji} ${count}` : emoji
         kb.text(text, `react:${emoji}`)
         col++
-        if (col >= 5) {
+        if (col >= 4) {
             kb.row()
             col = 0
         }

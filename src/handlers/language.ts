@@ -89,7 +89,7 @@ export function getReactionsKeyboard(selectedEmojis: string[], t: (key: string) 
         const label = `${isSelected ? '✅' : '⚪️'} ${emoji}`
         kb.text(label, `toggle_emoji:${emoji}`)
         col++
-        if (col >= 5) {
+        if (col >= 4) {
             kb.row()
             col = 0
         }
