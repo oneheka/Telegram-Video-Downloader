@@ -443,39 +443,81 @@ async function fetchThreadsDirect(url: string, tempDir: string, filePrefix: stri
         clearTimeout(timeoutId)
         const html = await res.text()
 
-        const mp4Matches = html.match(/https?:\\?\/\\?\/[^"'\s<>]+\.mp4[^"'\s<>]*/g) || html.match(/https?:\/\/[^"'\s<>]+\.mp4[^"'\s<>]*/g)
-        if (mp4Matches && mp4Matches.length > 0) {
-            const cleanVideoUrl = mp4Matches[0].replace(/\\/g, '').replace(/&amp;/g, '&')
-            const vController = new AbortController()
-            const vTimeout = setTimeout(() => vController.abort(), 20000)
-            const videoRes = await fetch(cleanVideoUrl, {
-                headers: {
-                    'User-Agent': USER_AGENT
-                },
-                signal: vController.signal
-            })
-            clearTimeout(vTimeout)
-            if (videoRes.ok) {
-                const arrayBuffer = await videoRes.arrayBuffer()
-                const buffer = Buffer.from(arrayBuffer)
-                const filePath = join(tempDir, `${filePrefix}_01.mp4`)
-                writeFileSync(filePath, buffer)
-                const stats = statSync(filePath)
-                const mp4Meta = parseMp4Metadata(filePath)
+        const videoUrls: string[] = []
+        const videoMatches = html.match(/"video_versions":\s*\[(.*?)\]/gs)
+        if (videoMatches) {
+            for (const vm of videoMatches) {
+                const urlMatches = vm.match(/"url":\s*"([^"]+)"/g)
+                if (urlMatches) {
+                    for (const u of urlMatches) {
+                        const rawUrl = u.replace(/"url":\s*"/, '').replace(/"$/, '').replace(/\\u0026/g, '&').replace(/\\/g, '')
+                        if (rawUrl.startsWith('http') && !videoUrls.includes(rawUrl)) {
+                            videoUrls.push(rawUrl)
+                        }
+                    }
+                }
+            }
+        }
 
-                const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/i)?.[1]
-                const ogDesc = html.match(/<meta property="og:description" content="([^"]+)"/i)?.[1]
-                const title = ogTitle || ogDesc
+        const rawMp4 = html.match(/https?:\\?\/\\?\/[^"'\s<>]+\.mp4[^"'\s<>]*/g) || html.match(/https?:\/\/[^"'\s<>]+\.mp4[^"'\s<>]*/g)
+        if (rawMp4) {
+            for (const m of rawMp4) {
+                const clean = m.replace(/\\/g, '').replace(/&amp;/g, '&').replace(/\\u0026/g, '&')
+                if (!videoUrls.includes(clean)) {
+                    videoUrls.push(clean)
+                }
+            }
+        }
 
-                return {
-                    mediaType: 'video',
-                    filePaths: [filePath],
-                    title,
-                    mediaKey: url,
-                    fileSizeMB: stats.size / (1024 * 1024),
-                    width: mp4Meta?.width,
-                    height: mp4Meta?.height,
-                    duration: mp4Meta?.duration
+        for (const cleanVideoUrl of videoUrls) {
+            try {
+                const vController = new AbortController()
+                const vTimeout = setTimeout(() => vController.abort(), 25000)
+                const videoRes = await fetch(cleanVideoUrl, {
+                    headers: {
+                        'User-Agent': USER_AGENT
+                    },
+                    signal: vController.signal
+                })
+                clearTimeout(vTimeout)
+                if (videoRes.ok) {
+                    const arrayBuffer = await videoRes.arrayBuffer()
+                    const buffer = Buffer.from(arrayBuffer)
+                    if (buffer.length > 50000) {
+                        const filePath = join(tempDir, `${filePrefix}_01.mp4`)
+                        writeFileSync(filePath, buffer)
+                        const stats = statSync(filePath)
+                        const mp4Meta = parseMp4Metadata(filePath)
+
+                        const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/i)?.[1]
+                        const ogDesc = html.match(/<meta property="og:description" content="([^"]+)"/i)?.[1]
+                        const title = ogTitle || ogDesc
+
+                        return {
+                            mediaType: 'video',
+                            filePaths: [filePath],
+                            title,
+                            mediaKey: url,
+                            fileSizeMB: stats.size / (1024 * 1024),
+                            width: mp4Meta?.width,
+                            height: mp4Meta?.height,
+                            duration: mp4Meta?.duration
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        const imageUrls: string[] = []
+        const imageMatches = html.match(/"image_versions2":\s*\{.*?"candidates":\s*\[(.*?)\]/gs)
+        if (imageMatches) {
+            for (const im of imageMatches) {
+                const urlMatches = im.match(/"url":\s*"([^"]+)"/g)
+                if (urlMatches) {
+                    const firstUrl = urlMatches[0].replace(/"url":\s*"/, '').replace(/"$/, '').replace(/\\u0026/g, '&').replace(/\\/g, '')
+                    if (firstUrl.startsWith('http') && !imageUrls.includes(firstUrl)) {
+                        imageUrls.push(firstUrl)
+                    }
                 }
             }
         }
@@ -483,28 +525,40 @@ async function fetchThreadsDirect(url: string, tempDir: string, filePrefix: stri
         const ogImage = html.match(/<meta property="og:image" content="([^"]+)"/i)?.[1] ||
             html.match(/<meta content="([^"]+)" property="og:image"/i)?.[1]
         if (ogImage) {
-            const cleanImageUrl = ogImage.replace(/&amp;/g, '&')
-            const imgController = new AbortController()
-            const imgTimeout = setTimeout(() => imgController.abort(), 10000)
-            const imgRes = await fetch(cleanImageUrl, {
-                headers: {
-                    'User-Agent': USER_AGENT
-                },
-                signal: imgController.signal
-            })
-            clearTimeout(imgTimeout)
-            if (imgRes.ok) {
-                const arrayBuffer = await imgRes.arrayBuffer()
-                const buffer = Buffer.from(arrayBuffer)
-                const filePath = join(tempDir, `${filePrefix}_01.jpg`)
-                writeFileSync(filePath, buffer)
-                const stats = statSync(filePath)
+            const clean = ogImage.replace(/&amp;/g, '&')
+            if (!imageUrls.includes(clean)) {
+                imageUrls.push(clean)
+            }
+        }
 
+        if (imageUrls.length > 0) {
+            const downloadedPhotos: string[] = []
+            for (let i = 0; i < imageUrls.length; i++) {
+                try {
+                    const imgController = new AbortController()
+                    const imgTimeout = setTimeout(() => imgController.abort(), 10000)
+                    const imgRes = await fetch(imageUrls[i], {
+                        headers: {
+                            'User-Agent': USER_AGENT
+                        },
+                        signal: imgController.signal
+                    })
+                    clearTimeout(imgTimeout)
+                    if (imgRes.ok) {
+                        const arrayBuffer = await imgRes.arrayBuffer()
+                        const photoPath = join(tempDir, `${filePrefix}_${String(i + 1).padStart(2, '0')}.jpg`)
+                        writeFileSync(photoPath, Buffer.from(arrayBuffer))
+                        downloadedPhotos.push(photoPath)
+                    }
+                } catch {}
+            }
+
+            if (downloadedPhotos.length > 0) {
                 return {
                     mediaType: 'photo',
-                    filePaths: [filePath],
+                    filePaths: downloadedPhotos,
                     mediaKey: url,
-                    fileSizeMB: stats.size / (1024 * 1024)
+                    fileSizeMB: statSync(downloadedPhotos[0]).size / (1024 * 1024)
                 }
             }
         }
@@ -621,6 +675,22 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
             binPath,
             [
                 ...commonArgs,
+                '-f', 'b/best/bestvideo+bestaudio',
+                '--merge-output-format', 'mp4',
+                '--ppa', 'Merger+ffmpeg:-movflags +faststart',
+                '-o', outputTemplate,
+                '--no-warnings',
+                targetUrl
+            ],
+            spawnEnv
+        )
+    }
+
+    if (downloadResult.exitCode !== 0 && (platform === 'pinterest' || platform === 'reddit')) {
+        downloadResult = await spawnProcess(
+            binPath,
+            [
+                ...commonArgs,
                 '--write-all-thumbnails',
                 '--convert-thumbnails', 'jpg',
                 '-o', outputTemplate,
@@ -648,7 +718,7 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
         }
     }
 
-    if (platform === 'threads' && videoFiles.length === 0 && photoFiles.length === 0) {
+    if (platform === 'threads' && videoFiles.length === 0) {
         const fallbackThreads = await fetchThreadsDirect(url, tempDir, filePrefix)
         if (fallbackThreads) {
             return fallbackThreads
