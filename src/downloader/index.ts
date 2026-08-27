@@ -301,6 +301,11 @@ export function extractImageUrls(data: any): string[] {
 
 async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string): Promise<MediaDownloadResult | null> {
     try {
+        let targetUrl = url
+        if (targetUrl.includes('vt.tiktok.com') || targetUrl.includes('vm.tiktok.com') || targetUrl.includes('t.tiktok.com') || targetUrl.includes('/t/')) {
+            targetUrl = await resolveRedirectUrl(targetUrl)
+        }
+
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 12000)
 
@@ -308,86 +313,99 @@ async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string):
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                'User-Agent': USER_AGENT
+                'User-Agent': USER_AGENT,
+                'Referer': 'https://www.tikwm.com/'
             },
-            body: new URLSearchParams({ url, hd: '1' }),
+            body: new URLSearchParams({ url: targetUrl, hd: '1' }),
             signal: controller.signal
         })
         clearTimeout(timeoutId)
 
-        if (!res.ok) return null
-        const json = await res.json()
-        if (json.code !== 0 || !json.data) return null
+        if (res.ok) {
+            const json = await res.json()
+            if (json.code === 0 && json.data) {
+                const data = json.data
+                const title = data.title || undefined
+                const duration = typeof data.duration === 'number' && data.duration > 0 ? data.duration : undefined
 
-        const data = json.data
-        const title = data.title || undefined
-        const duration = typeof data.duration === 'number' && data.duration > 0 ? data.duration : undefined
+                if (Array.isArray(data.images) && data.images.length > 0) {
+                    const photoFiles: string[] = []
+                    for (let i = 0; i < data.images.length; i++) {
+                        const imgUrl = data.images[i]
+                        try {
+                            const c = new AbortController()
+                            const tId = setTimeout(() => c.abort(), 10000)
+                            const imgRes = await fetch(imgUrl, {
+                                headers: {
+                                    'User-Agent': USER_AGENT,
+                                    'Referer': 'https://www.tiktok.com/'
+                                },
+                                signal: c.signal
+                            })
+                            clearTimeout(tId)
+                            if (imgRes.ok) {
+                                const arrayBuf = await imgRes.arrayBuffer()
+                                const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
+                                const photoPath = join(tempDir, photoName)
+                                writeFileSync(photoPath, Buffer.from(arrayBuf))
+                                photoFiles.push(photoName)
+                            }
+                        } catch {}
+                    }
 
-        if (Array.isArray(data.images) && data.images.length > 0) {
-            const photoFiles: string[] = []
-            for (let i = 0; i < data.images.length; i++) {
-                const imgUrl = data.images[i]
-                try {
+                    if (photoFiles.length > 0) {
+                        const filePaths = photoFiles.map((f) => join(tempDir, f))
+                        let totalSizeBytes = 0
+                        for (const p of filePaths) {
+                            try {
+                                totalSizeBytes += statSync(p).size
+                            } catch {}
+                        }
+                        return {
+                            mediaType: 'photo',
+                            filePaths,
+                            title,
+                            mediaKey: `tiktok:${data.id || url}`,
+                            fileSizeMB: totalSizeBytes / (1024 * 1024)
+                        }
+                    }
+                }
+
+                const videoUrl = data.hdplay || data.play || data.wmplay
+                if (videoUrl && typeof videoUrl === 'string') {
                     const c = new AbortController()
-                    const tId = setTimeout(() => c.abort(), 10000)
-                    const imgRes = await fetch(imgUrl, {
-                        headers: { 'User-Agent': USER_AGENT },
+                    const tId = setTimeout(() => c.abort(), 20000)
+                    const videoRes = await fetch(videoUrl, {
+                        headers: {
+                            'User-Agent': USER_AGENT,
+                            'Referer': 'https://www.tikwm.com/'
+                        },
                         signal: c.signal
                     })
                     clearTimeout(tId)
-                    if (imgRes.ok) {
-                        const arrayBuf = await imgRes.arrayBuffer()
-                        const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
-                        const photoPath = join(tempDir, photoName)
-                        writeFileSync(photoPath, Buffer.from(arrayBuf))
-                        photoFiles.push(photoName)
-                    }
-                } catch {}
-            }
 
-            if (photoFiles.length > 0) {
-                const filePaths = photoFiles.map((f) => join(tempDir, f))
-                let totalSizeBytes = 0
-                for (const p of filePaths) {
-                    try {
-                        totalSizeBytes += statSync(p).size
-                    } catch {}
-                }
-                return {
-                    mediaType: 'photo',
-                    filePaths,
-                    title,
-                    mediaKey: `tiktok:${data.id || url}`,
-                    fileSizeMB: totalSizeBytes / (1024 * 1024)
-                }
-            }
-        } else {
-            const videoUrl = data.hdplay || data.play || data.wmplay
-            if (videoUrl && typeof videoUrl === 'string') {
-                const c = new AbortController()
-                const tId = setTimeout(() => c.abort(), 20000)
-                const videoRes = await fetch(videoUrl, {
-                    headers: { 'User-Agent': USER_AGENT },
-                    signal: c.signal
-                })
-                clearTimeout(tId)
+                    if (videoRes.ok) {
+                        const contentType = videoRes.headers.get('content-type') || ''
+                        const arrayBuf = await videoRes.arrayBuffer()
+                        const buffer = Buffer.from(arrayBuf)
 
-                if (videoRes.ok) {
-                    const arrayBuf = await videoRes.arrayBuffer()
-                    const videoName = `${filePrefix}.mp4`
-                    const videoPath = join(tempDir, videoName)
-                    writeFileSync(videoPath, Buffer.from(arrayBuf))
-                    const stats = statSync(videoPath)
-                    const mp4Meta = parseMp4Metadata(videoPath)
-                    return {
-                        mediaType: 'video',
-                        filePaths: [videoPath],
-                        title,
-                        mediaKey: `tiktok:${data.id || url}`,
-                        fileSizeMB: stats.size / (1024 * 1024),
-                        width: mp4Meta?.width,
-                        height: mp4Meta?.height,
-                        duration: mp4Meta?.duration || duration
+                        if (!contentType.includes('audio') && buffer.length > 10000) {
+                            const videoName = `${filePrefix}.mp4`
+                            const videoPath = join(tempDir, videoName)
+                            writeFileSync(videoPath, buffer)
+                            const stats = statSync(videoPath)
+                            const mp4Meta = parseMp4Metadata(videoPath)
+                            return {
+                                mediaType: 'video',
+                                filePaths: [videoPath],
+                                title,
+                                mediaKey: `tiktok:${data.id || url}`,
+                                fileSizeMB: stats.size / (1024 * 1024),
+                                width: mp4Meta?.width,
+                                height: mp4Meta?.height,
+                                duration: mp4Meta?.duration || duration
+                            }
+                        }
                     }
                 }
             }
@@ -603,6 +621,9 @@ export async function downloadMedia(url: string, platform: SupportedPlatform): P
 
     let targetUrl = url
     if (platform === 'tiktok') {
+        if (targetUrl.includes('vt.tiktok.com') || targetUrl.includes('vm.tiktok.com') || targetUrl.includes('t.tiktok.com') || targetUrl.includes('/t/')) {
+            targetUrl = await resolveRedirectUrl(targetUrl)
+        }
         targetUrl = targetUrl.replace(/\/photo\//i, '/video/')
     }
     if (platform === 'threads') {
