@@ -8,7 +8,7 @@ export interface Config {
 
 export const CONFIG: Config = {
     BOT_TOKEN: process.env.BOT_TOKEN ?? '',
-    DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/telegram_bot',
+    DATABASE_URL: process.env.DATABASE_URL ?? '',
     DEFAULT_LANGUAGE: process.env.DEFAULT_LANGUAGE ?? 'en'
 }
 
