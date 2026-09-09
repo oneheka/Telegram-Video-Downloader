@@ -299,12 +299,195 @@ export function extractImageUrls(data: any): string[] {
     return Array.from(new Set(urls))
 }
 
-async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string): Promise<MediaDownloadResult | null> {
+function randomString(chars: string, length: number): string {
+    let result = ''
+    for (let i = 0; i < length; i++) {
+        result += chars[Math.floor(Math.random() * chars.length)]
+    }
+    return result
+}
+
+function buildTikTokApiParams(awemeId: string): string {
+    const deviceId = Array.from({ length: 19 }, () => Math.floor(Math.random() * 10)).join('')
+    return new URLSearchParams({
+        aweme_id: awemeId,
+        version_name: '1.1.9',
+        version_code: '2018111632',
+        build_number: '1.1.9',
+        device_id: deviceId,
+        iid: deviceId,
+        manifest_version_code: '2018111632',
+        update_version_code: '2018111632',
+        openudid: randomString('0123456789abcdef', 16),
+        uuid: randomString('1234567890', 16),
+        _rticket: (Date.now() * 1000).toString(),
+        ts: Date.now().toString(),
+        device_brand: 'Google',
+        device_type: 'Pixel 4',
+        device_platform: 'android',
+        resolution: '1080*1920',
+        dpi: '420',
+        os_version: '10',
+        os_api: '29',
+        carrier_region: 'US',
+        sys_region: 'US',
+        region: 'US',
+        timezone_name: 'America/New_York',
+        timezone_offset: '-14400',
+        channel: 'googleplay',
+        ac: 'wifi',
+        mcc_mnc: '310260',
+        is_my_cn: '0',
+        ssmix: 'a',
+        as: 'a1qwert123',
+        cp: 'cbfhckdckkde1'
+    }).toString()
+}
+
+async function extractTikTokId(url: string): Promise<string | null> {
+    const directMatch = url.match(/\d{17,21}/)
+    if (directMatch) {
+        return directMatch[0]
+    }
+    const resolved = await resolveRedirectUrl(url)
+    const resolvedMatch = resolved.match(/\d{17,21}/)
+    return resolvedMatch ? resolvedMatch[0] : null
+}
+
+async function fetchTikTokAppApi(url: string, tempDir: string, filePrefix: string): Promise<MediaDownloadResult | null> {
+    try {
+        const awemeId = await extractTikTokId(url)
+        if (!awemeId) {
+            return null
+        }
+
+        const params = buildTikTokApiParams(awemeId)
+        const apiUrl = `https://api16-normal-useast5.tiktokv.us/aweme/v1/feed/?${params}`
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 12000)
+
+        const res = await fetch(apiUrl, {
+            method: 'OPTIONS',
+            headers: {
+                'User-Agent': 'com.zhiliaoapp.musically/300904 (2018111632; U; Android 10; en_US; Pixel 4; Build/QQ3A.200805.001; Cronet/58.0.2991.0)'
+            },
+            signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+
+        if (!res.ok) {
+            return null
+        }
+
+        const json: any = await res.json()
+        const item = json?.aweme_list?.find((v: any) => v.aweme_id === awemeId)
+        if (!item) {
+            return null
+        }
+
+        const title = item.desc || undefined
+
+        if (item.image_post_info?.images && Array.isArray(item.image_post_info.images) && item.image_post_info.images.length > 0) {
+            const photoFiles: string[] = []
+            for (let i = 0; i < item.image_post_info.images.length; i++) {
+                const img = item.image_post_info.images[i]
+                const urlList: string[] = img?.display_image?.url_list || []
+                const preferredUrl = urlList.find((u) => u.includes('.jpeg') || u.includes('.jpg')) || urlList[0]
+                if (!preferredUrl) {
+                    continue
+                }
+
+                try {
+                    const c = new AbortController()
+                    const tId = setTimeout(() => c.abort(), 10000)
+                    const imgRes = await fetch(preferredUrl, {
+                        headers: {
+                            'User-Agent': USER_AGENT,
+                            'Referer': 'https://www.tiktok.com/'
+                        },
+                        signal: c.signal
+                    })
+                    clearTimeout(tId)
+
+                    if (imgRes.ok) {
+                        const contentType = imgRes.headers.get('content-type') || ''
+                        const ext = contentType.includes('webp') ? 'webp' : 'jpg'
+                        const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.${ext}`
+                        const photoPath = join(tempDir, photoName)
+                        const arrayBuf = await imgRes.arrayBuffer()
+                        writeFileSync(photoPath, Buffer.from(arrayBuf))
+                        photoFiles.push(photoPath)
+                    }
+                } catch {}
+            }
+
+            if (photoFiles.length > 0) {
+                let totalSizeBytes = 0
+                for (const p of photoFiles) {
+                    try {
+                        totalSizeBytes += statSync(p).size
+                    } catch {}
+                }
+                return {
+                    mediaType: 'photo',
+                    filePaths: photoFiles,
+                    title,
+                    mediaKey: `tiktok:${awemeId}`,
+                    fileSizeMB: totalSizeBytes / (1024 * 1024)
+                }
+            }
+        }
+
+        const videoUrlList: string[] = item.video?.play_addr?.url_list || []
+        const videoUrl = videoUrlList[0]
+        if (videoUrl && typeof videoUrl === 'string') {
+            const c = new AbortController()
+            const tId = setTimeout(() => c.abort(), 25000)
+            const videoRes = await fetch(videoUrl, {
+                headers: {
+                    'User-Agent': USER_AGENT,
+                    'Referer': 'https://www.tiktok.com/'
+                },
+                signal: c.signal
+            })
+            clearTimeout(tId)
+
+            if (videoRes.ok) {
+                const contentType = videoRes.headers.get('content-type') || ''
+                const arrayBuf = await videoRes.arrayBuffer()
+                const buffer = Buffer.from(arrayBuf)
+
+                if (!contentType.includes('audio') && buffer.length > 10000) {
+                    const videoName = `${filePrefix}.mp4`
+                    const videoPath = join(tempDir, videoName)
+                    writeFileSync(videoPath, buffer)
+                    const stats = statSync(videoPath)
+                    const mp4Meta = parseMp4Metadata(videoPath)
+                    return {
+                        mediaType: 'video',
+                        filePaths: [videoPath],
+                        title,
+                        mediaKey: `tiktok:${awemeId}`,
+                        fileSizeMB: stats.size / (1024 * 1024),
+                        width: mp4Meta?.width || item.video?.width,
+                        height: mp4Meta?.height || item.video?.height,
+                        duration: mp4Meta?.duration || item.video?.duration
+                    }
+                }
+            }
+        }
+    } catch {}
+    return null
+}
+
+async function fetchTikWMApi(url: string, tempDir: string, filePrefix: string): Promise<MediaDownloadResult | null> {
     try {
         let targetUrl = url
         if (targetUrl.includes('vt.tiktok.com') || targetUrl.includes('vm.tiktok.com') || targetUrl.includes('t.tiktok.com') || targetUrl.includes('/t/')) {
             targetUrl = await resolveRedirectUrl(targetUrl)
         }
+        targetUrl = targetUrl.split('?')[0]
 
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 12000)
@@ -348,22 +531,21 @@ async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string):
                                 const photoName = `${filePrefix}_slide_${String(i + 1).padStart(2, '0')}.jpg`
                                 const photoPath = join(tempDir, photoName)
                                 writeFileSync(photoPath, Buffer.from(arrayBuf))
-                                photoFiles.push(photoName)
+                                photoFiles.push(photoPath)
                             }
                         } catch {}
                     }
 
                     if (photoFiles.length > 0) {
-                        const filePaths = photoFiles.map((f) => join(tempDir, f))
                         let totalSizeBytes = 0
-                        for (const p of filePaths) {
+                        for (const p of photoFiles) {
                             try {
                                 totalSizeBytes += statSync(p).size
                             } catch {}
                         }
                         return {
                             mediaType: 'photo',
-                            filePaths,
+                            filePaths: photoFiles,
                             title,
                             mediaKey: `tiktok:${data.id || url}`,
                             fileSizeMB: totalSizeBytes / (1024 * 1024)
@@ -410,10 +592,16 @@ async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string):
                 }
             }
         }
-    } catch (err) {
-        console.warn('TikWM API fetch error:', err)
-    }
+    } catch {}
     return null
+}
+
+async function fetchTikTokApi(url: string, tempDir: string, filePrefix: string): Promise<MediaDownloadResult | null> {
+    const appResult = await fetchTikTokAppApi(url, tempDir, filePrefix)
+    if (appResult) {
+        return appResult
+    }
+    return fetchTikWMApi(url, tempDir, filePrefix)
 }
 
 async function resolveRedirectUrl(url: string): Promise<string> {
